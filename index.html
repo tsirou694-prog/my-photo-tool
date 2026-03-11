@@ -512,14 +512,20 @@ function render() {
   const barR = S.barSize/100;
 
   let TH = H, CW = W;
-  if (S.style==='polaroid') { TH=H+Math.round(H*barR)+Math.round(H*0.04); CW=W+Math.round(W*0.04); }
+  const pad2 = Math.round(W*0.02);
+  if (S.style==='polaroid') { CW=W+pad2*2; TH=H+pad2+Math.round(H*barR)+pad2; }
   else if (S.style==='corner') { TH=H; }
   else { TH=H+Math.round(H*barR); }
   cv.width=CW; cv.height=TH;
 
-  const ox = S.style==='polaroid'?Math.round(W*0.02):0;
-  const oy = S.style==='polaroid'?Math.round(H*0.02):0;
-  ctx.drawImage(img,ox,oy,W,H);
+  const ox = S.style==='polaroid'?pad2:0;
+  const oy = S.style==='polaroid'?pad2:0;
+  // 拍立得先铺背景（否则 drawPolaroid 里的背景会盖住照片）
+  if (S.style==='polaroid') {
+    ctx.fillStyle = THEMES[S.theme].bg;
+    ctx.fillRect(0, 0, CW, TH);
+  }
+  ctx.drawImage(img, ox, oy, W, H);
 
   if (S.style==='film')     drawFilm(ctx,W,H,TH,CW,th,e,f,BASE);
   if (S.style==='minimal')  drawMinimal(ctx,W,H,TH,CW,th,e,f,BASE);
@@ -603,9 +609,9 @@ function drawCorner(ctx,W,H,CW,th,e,f,B){
 }
 
 function drawPolaroid(ctx,W,H,TH,CW,th,e,f,B,ox,oy){
-  const sW=Math.round(W*0.02), bH2=TH-H-sW*2;
-  ctx.fillStyle=th.bg; ctx.fillRect(0,0,CW,TH);
-  const bY=oy+H, cx=CW/2, vC=bY+bH2/2;
+  // 底部信息区：从图片底边到画布底部（背景已在 render() 提前绘制）
+  const bY=oy+H, bH2=TH-bY;
+  const cx=CW/2, vC=bY+bH2/2;
   ctx.textBaseline='middle'; ctx.textAlign='center';
   if(f.camera&&e.camera){ ctx.font=`700 ${B*1.1}px 'DM Mono',monospace`; ctx.fillStyle=th.logo; ctx.fillText(e.camera.toUpperCase(),cx,vC-B*1.2); }
   if(f.params){ const p=[e.shutter,e.aperture,e.iso,f.focal?e.focal:null].filter(Boolean); ctx.font=`300 ${B*0.8}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; ctx.fillText(p.join('   '),cx,vC+B*0.2); }
