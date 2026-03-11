@@ -8,163 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Exif Frame">
 <link rel="manifest" href="data:application/json,{}">
 <title>Exif Frame · 照片水印</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js">
-// ══════════════════════════════════════════
-// 裁切功能
-// ══════════════════════════════════════════
-const CROP = {
-  ratio: 'free',      // 当前比例
-  scale: 1,           // 显示缩放比
-  imgW: 0, imgH: 0,   // 原图尺寸
-  // 裁切框（显示坐标）
-  bx: 0, by: 0, bw: 0, bh: 0,
-  // 拖拽状态
-  drag: null,         // 'move' | null
-  dragSX: 0, dragSY: 0, dragBX: 0, dragBY: 0,
-  // 是否已裁切过（用于渲染时映射坐标）
-  cropX: 0, cropY: 0, cropW: 0, cropH: 0,
-  active: false,
-};
-
-function openCropModal() {
-  if (!S.img) return;
-  const modal = document.getElementById('cropModal');
-  const bgCv  = document.getElementById('crop-bg-canvas');
-  const stage = document.getElementById('cropStage');
-  const wrap  = document.getElementById('cropCanvasWrap');
-
-  // 计算显示尺寸，适配屏幕
-  const maxW = stage.clientWidth  - 24;
-  const maxH = stage.clientHeight - 24;
-  const iw = S.img.naturalWidth, ih = S.img.naturalHeight;
-  const sc = Math.min(maxW / iw, maxH / ih, 1);
-
-  CROP.scale = sc;
-  CROP.imgW  = iw;
-  CROP.imgH  = ih;
-
-  bgCv.width  = Math.round(iw * sc);
-  bgCv.height = Math.round(ih * sc);
-  bgCv.style.width  = bgCv.width  + 'px';
-  bgCv.style.height = bgCv.height + 'px';
-
-  const ctx = bgCv.getContext('2d');
-  ctx.drawImage(S.img, 0, 0, bgCv.width, bgCv.height);
-
-  // 初始化裁切框为全图
-  CROP.bx = 0; CROP.by = 0;
-  CROP.bw = bgCv.width; CROP.bh = bgCv.height;
-  applyRatioCrop();
-  updateCropBox();
-
-  modal.classList.add('show');
-}
-
-function applyRatioCrop() {
-  const bgCv = document.getElementById('crop-bg-canvas');
-  const dw = bgCv.width, dh = bgCv.height;
-  if (CROP.ratio === 'free') { CROP.bx=0; CROP.by=0; CROP.bw=dw; CROP.bh=dh; return; }
-  const [rw, rh] = CROP.ratio.split(':').map(Number);
-  let bw = dw, bh = Math.round(dw * rh / rw);
-  if (bh > dh) { bh = dh; bw = Math.round(dh * rw / rh); }
-  CROP.bx = Math.round((dw - bw) / 2);
-  CROP.by = Math.round((dh - bh) / 2);
-  CROP.bw = bw; CROP.bh = bh;
-}
-
-function updateCropBox() {
-  const box = document.getElementById('cropBox');
-  box.style.left   = CROP.bx + 'px';
-  box.style.top    = CROP.by + 'px';
-  box.style.width  = CROP.bw + 'px';
-  box.style.height = CROP.bh + 'px';
-}
-
-function clampCrop() {
-  const bgCv = document.getElementById('crop-bg-canvas');
-  const dw = bgCv.width, dh = bgCv.height;
-  CROP.bw = Math.max(40, Math.min(CROP.bw, dw));
-  CROP.bh = Math.max(40, Math.min(CROP.bh, dh));
-  CROP.bx = Math.max(0, Math.min(CROP.bx, dw - CROP.bw));
-  CROP.by = Math.max(0, Math.min(CROP.by, dh - CROP.bh));
-}
-
-// 把显示坐标→原图坐标并裁切出新 img
-function confirmCrop() {
-  const sc = CROP.scale;
-  const sx = Math.round(CROP.bx / sc);
-  const sy = Math.round(CROP.by / sc);
-  const sw = Math.round(CROP.bw / sc);
-  const sh = Math.round(CROP.bh / sc);
-
-  const cv = document.createElement('canvas');
-  cv.width = sw; cv.height = sh;
-  cv.getContext('2d').drawImage(S.img, sx, sy, sw, sh, 0, 0, sw, sh);
-
-  const newImg = new Image();
-  newImg.onload = () => {
-    S.img = newImg;
-    render();
-    document.getElementById('cropModal').classList.remove('show');
-  };
-  newImg.src = cv.toDataURL('image/jpeg', 0.98);
-}
-
-// ── 拖拽移动裁切框（鼠标+触摸） ──
-const cropBox = document.getElementById('cropBox');
-
-function getEventXY(e) {
-  if (e.touches) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
-  return { x: e.clientX, y: e.clientY };
-}
-
-function startDrag(e) {
-  e.preventDefault();
-  const {x, y} = getEventXY(e);
-  const rect = document.getElementById('crop-bg-canvas').getBoundingClientRect();
-  CROP.drag   = 'move';
-  CROP.dragSX = x; CROP.dragSY = y;
-  CROP.dragBX = CROP.bx; CROP.dragBY = CROP.by;
-}
-
-function onDrag(e) {
-  if (!CROP.drag) return;
-  e.preventDefault();
-  const {x, y} = getEventXY(e);
-  const dx = x - CROP.dragSX, dy = y - CROP.dragSY;
-  CROP.bx = CROP.dragBX + dx;
-  CROP.by = CROP.dragBY + dy;
-  clampCrop();
-  updateCropBox();
-}
-
-function endDrag() { CROP.drag = null; }
-
-cropBox.addEventListener('mousedown',  startDrag);
-cropBox.addEventListener('touchstart', startDrag, { passive: false });
-document.addEventListener('mousemove', onDrag);
-document.addEventListener('touchmove', onDrag, { passive: false });
-document.addEventListener('mouseup',   endDrag);
-document.addEventListener('touchend',  endDrag);
-
-// ── 比例按钮 ──
-document.querySelectorAll('.ratio-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.ratio-btn').forEach(b => b.classList.remove('on'));
-    btn.classList.add('on');
-    CROP.ratio = btn.dataset.r;
-    applyRatioCrop();
-    updateCropBox();
-  });
-});
-
-// ── 弹窗控制 ──
-document.getElementById('cropEntryBtn').addEventListener('click', openCropModal);
-document.getElementById('cropClose').addEventListener('click',  () => document.getElementById('cropModal').classList.remove('show'));
-document.getElementById('cropReset').addEventListener('click',  () => { CROP.ratio='free'; document.querySelectorAll('.ratio-btn').forEach(b=>b.classList.toggle('on', b.dataset.r==='free')); applyRatioCrop(); updateCropBox(); });
-document.getElementById('cropConfirm').addEventListener('click', confirmCrop);
-
-</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@300;400;500&display=swap');
 
@@ -979,6 +823,172 @@ function doExport() {
     <button class="btn btn-primary"   id="cropConfirm" style="flex:3">确认裁切</button>
   </div>
 </div>
+
+
+<script>
+// ══════════════════════════════════════════
+// 裁切功能（DOM 加载完后执行）
+// ══════════════════════════════════════════
+(function() {
+
+const CROP = {
+  ratio: 'free',
+  scale: 1,
+  drag: null,
+  dragSX: 0, dragSY: 0, dragBX: 0, dragBY: 0,
+  bx: 0, by: 0, bw: 0, bh: 0,
+};
+
+function openCropModal() {
+  if (!S.img) return;
+
+  const modal = document.getElementById('cropModal');
+  const bgCv  = document.getElementById('crop-bg-canvas');
+  const stage = document.getElementById('cropStage');
+
+  // 计算适配屏幕的显示尺寸
+  const maxW = stage.clientWidth  - 24;
+  const maxH = stage.clientHeight - 24;
+  const iw = S.img.naturalWidth, ih = S.img.naturalHeight;
+  const sc = Math.min(maxW / iw, maxH / ih, 1);
+
+  CROP.scale = sc;
+  bgCv.width  = Math.round(iw * sc);
+  bgCv.height = Math.round(ih * sc);
+  bgCv.style.width  = bgCv.width  + 'px';
+  bgCv.style.height = bgCv.height + 'px';
+
+  bgCv.getContext('2d').drawImage(S.img, 0, 0, bgCv.width, bgCv.height);
+
+  // 初始框：全图，再按比例收缩
+  CROP.bx = 0; CROP.by = 0;
+  CROP.bw = bgCv.width; CROP.bh = bgCv.height;
+
+  // 重置比例按钮到"自由"
+  CROP.ratio = 'free';
+  document.querySelectorAll('.ratio-btn').forEach(b => b.classList.toggle('on', b.dataset.r === 'free'));
+
+  applyRatioCrop();
+  updateCropBox();
+  modal.classList.add('show');
+}
+
+function applyRatioCrop() {
+  const bgCv = document.getElementById('crop-bg-canvas');
+  const dw = bgCv.width, dh = bgCv.height;
+  if (CROP.ratio === 'free') {
+    CROP.bx = 0; CROP.by = 0; CROP.bw = dw; CROP.bh = dh;
+    return;
+  }
+  const [rw, rh] = CROP.ratio.split(':').map(Number);
+  let bw = dw, bh = Math.round(dw * rh / rw);
+  if (bh > dh) { bh = dh; bw = Math.round(dh * rw / rh); }
+  CROP.bx = Math.round((dw - bw) / 2);
+  CROP.by = Math.round((dh - bh) / 2);
+  CROP.bw = bw;
+  CROP.bh = bh;
+}
+
+function updateCropBox() {
+  const box = document.getElementById('cropBox');
+  box.style.left   = CROP.bx + 'px';
+  box.style.top    = CROP.by + 'px';
+  box.style.width  = CROP.bw + 'px';
+  box.style.height = CROP.bh + 'px';
+}
+
+function clampCrop() {
+  const bgCv = document.getElementById('crop-bg-canvas');
+  const dw = bgCv.width, dh = bgCv.height;
+  CROP.bw = Math.max(40, Math.min(CROP.bw, dw));
+  CROP.bh = Math.max(40, Math.min(CROP.bh, dh));
+  CROP.bx = Math.max(0, Math.min(CROP.bx, dw - CROP.bw));
+  CROP.by = Math.max(0, Math.min(CROP.by, dh - CROP.bh));
+}
+
+function confirmCrop() {
+  const sc = CROP.scale;
+  const sx = Math.round(CROP.bx / sc);
+  const sy = Math.round(CROP.by / sc);
+  const sw = Math.round(CROP.bw / sc);
+  const sh = Math.round(CROP.bh / sc);
+
+  const cv = document.createElement('canvas');
+  cv.width = sw; cv.height = sh;
+  cv.getContext('2d').drawImage(S.img, sx, sy, sw, sh, 0, 0, sw, sh);
+
+  const newImg = new Image();
+  newImg.onload = () => {
+    S.img = newImg;
+    render();
+    document.getElementById('cropModal').classList.remove('show');
+  };
+  newImg.src = cv.toDataURL('image/jpeg', 0.98);
+}
+
+// ── 拖拽 ──
+function getXY(e) {
+  return e.touches ? { x: e.touches[0].clientX, y: e.touches[0].clientY }
+                   : { x: e.clientX, y: e.clientY };
+}
+
+function startDrag(e) {
+  e.preventDefault();
+  const { x, y } = getXY(e);
+  CROP.drag   = true;
+  CROP.dragSX = x; CROP.dragSY = y;
+  CROP.dragBX = CROP.bx; CROP.dragBY = CROP.by;
+}
+
+function onDrag(e) {
+  if (!CROP.drag) return;
+  e.preventDefault();
+  const { x, y } = getXY(e);
+  CROP.bx = CROP.dragBX + (x - CROP.dragSX);
+  CROP.by = CROP.dragBY + (y - CROP.dragSY);
+  clampCrop();
+  updateCropBox();
+}
+
+function endDrag() { CROP.drag = false; }
+
+const cropBox = document.getElementById('cropBox');
+cropBox.addEventListener('mousedown',  startDrag);
+cropBox.addEventListener('touchstart', startDrag, { passive: false });
+document.addEventListener('mousemove', onDrag);
+document.addEventListener('touchmove', onDrag, { passive: false });
+document.addEventListener('mouseup',   endDrag);
+document.addEventListener('touchend',  endDrag);
+
+// ── 比例按钮 ──
+document.querySelectorAll('.ratio-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ratio-btn').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    CROP.ratio = btn.dataset.r;
+    applyRatioCrop();
+    updateCropBox();
+  });
+});
+
+// ── 弹窗按钮 ──
+document.getElementById('cropEntryBtn').addEventListener('click', openCropModal);
+
+document.getElementById('cropClose').addEventListener('click', () => {
+  document.getElementById('cropModal').classList.remove('show');
+});
+
+document.getElementById('cropReset').addEventListener('click', () => {
+  CROP.ratio = 'free';
+  document.querySelectorAll('.ratio-btn').forEach(b => b.classList.toggle('on', b.dataset.r === 'free'));
+  applyRatioCrop();
+  updateCropBox();
+});
+
+document.getElementById('cropConfirm').addEventListener('click', confirmCrop);
+
+})(); // IIFE 结束
+</script>
 
 </body></html>`);
   } else {
