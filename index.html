@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Exif Frame">
+<link rel="manifest" href="data:application/json,{}">
+<title>Exif Frame · 照片水印</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@300;400;500&display=swap');
+
+:root {
+  --bg: #0e0e0e;
+  --surface: #161616;
+  --border: #252525;
+  --accent: #c8a96e;
+  --text: #e8e4dc;
+  --muted: #5a5a5a;
+  --white: #ffffff;
+  --radius: 12px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html { background:var(--bg); }
+body {
+  background:var(--bg);
+  color:var(--text);
+  font-family:'DM Mono', monospace;
+  min-height:100dvh;
+  overflow-x:hidden;
+}
+
+/* ── Header ── */
+header {
+  position:sticky; top:0; z-index:60;
+  background:rgba(14,14,14,0.9);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  border-bottom:1px solid var(--border);
+  padding:14px 20px;
+  display:flex; align-items:center; gap:12px;
+}
+header h1 {
+  font-family:'DM Serif Display', serif;
+  font-size:20px; font-weight:400;
+  color:var(--white); letter-spacing:0.02em;
+}
+header small {
+  font-size:10px; color:var(--muted);
+  letter-spacing:0.18em; text-transform:uppercase;
+}
+.header-dot {
+  margin-left:auto;
+  width:7px; height:7px; border-radius:50%;
+  background:var(--border);
+  transition:background 0.3s;
+}
+.header-dot.ready { background:var(--accent); }
+
+/* ── Layout ── */
+.page {
+  display:grid;
+  grid-template-columns:1fr;
+  gap:0;
+}
+@media(min-width:780px){
+  .page {
+    grid-template-columns:310px 1fr;
+    min-height:calc(100dvh - 53px);
+  }
+  .panel { border-right:1px solid var(--border); overflow-y:auto; max-height:calc(100dvh - 53px); }
+  .stage { position:sticky; top:53px; height:calc(100dvh - 53px); overflow:auto; }
+}
+
+/* ── Panel (left) ── */
+.panel {
+  display:flex; flex-direction:column; gap:0;
+  border-bottom:1px solid var(--border);
+}
+@media(min-width:780px){ border-bottom:none; }
+
+.section {
+  border-bottom:1px solid var(--border);
+  padding:18px 20px;
+}
+.section:last-child { border-bottom:none; }
+.section-label {
+  font-size:9px; letter-spacing:0.22em;
+  text-transform:uppercase; color:var(--muted);
+  margin-bottom:14px;
+}
+
+/* ── Upload ── */
+.upload-zone {
+  border:1.5px dashed var(--border);
+  border-radius:var(--radius);
+  padding:28px 16px;
+  display:flex; flex-direction:column;
+  align-items:center; gap:8px;
+  cursor:pointer;
+  transition:all 0.2s;
+  text-align:center;
+}
+.upload-zone.active-file {
+  border-color:var(--accent);
+  border-style:solid;
+  background:rgba(200,169,110,0.04);
+  padding:14px 16px;
+}
+.upload-zone input { display:none; }
+.upload-ico { font-size:28px; opacity:0.25; line-height:1; }
+.upload-zone.active-file .upload-ico { opacity:0.7; }
+.upload-label { font-size:13px; color:var(--muted); line-height:1.5; }
+.upload-filename { font-size:12px; color:var(--accent); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.upload-sub { font-size:10px; color:var(--muted); opacity:0.5; }
+
+/* ── Style picker ── */
+.style-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.style-btn {
+  padding:12px 6px;
+  border:1.5px solid var(--border);
+  border-radius:10px;
+  background:transparent;
+  color:var(--muted);
+  font-family:'DM Mono', monospace;
+  font-size:11px; letter-spacing:0.06em;
+  cursor:pointer; transition:all 0.15s;
+  display:flex; flex-direction:column;
+  align-items:center; gap:5px;
+  text-transform:uppercase;
+}
+.style-btn .ico { font-size:20px; }
+.style-btn.on {
+  border-color:var(--accent);
+  color:var(--accent);
+  background:rgba(200,169,110,0.08);
+}
+
+/* ── Theme dots ── */
+.dots { display:flex; gap:9px; flex-wrap:wrap; }
+.dot {
+  width:32px; height:32px; border-radius:50%;
+  cursor:pointer;
+  border:2.5px solid transparent;
+  transition:all 0.15s;
+  flex-shrink:0;
+}
+.dot.on {
+  border-color:var(--white);
+  transform:scale(1.12);
+  box-shadow:0 0 0 1px rgba(255,255,255,0.15);
+}
+
+/* ── Toggles ── */
+.toggle-row {
+  display:flex; align-items:center;
+  justify-content:space-between;
+  padding:11px 0;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  cursor:pointer;
+}
+.toggle-row:last-child { border-bottom:none; }
+.toggle-label { font-size:13px; color:var(--text); }
+.toggle-switch {
+  width:42px; height:24px;
+  background:var(--border); border-radius:12px;
+  position:relative; transition:background 0.2s; flex-shrink:0;
+}
+.toggle-switch.on { background:var(--accent); }
+.toggle-switch::after {
+  content:'';
+  position:absolute;
+  width:16px; height:16px;
+  background:var(--white); border-radius:50%;
+  top:4px; left:4px;
+  transition:left 0.2s;
+  box-shadow:0 1px 4px rgba(0,0,0,0.3);
+}
+.toggle-switch.on::after { left:22px; }
+
+/* ── Sliders ── */
+.slider-row { display:flex; flex-direction:column; gap:0; }
+.slider-item { padding:10px 0; border-bottom:1px solid rgba(255,255,255,0.04); }
+.slider-item:last-child { border-bottom:none; }
+.slider-meta { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:8px; }
+.slider-meta span { color:var(--accent); }
+input[type=range] {
+  width:100%; -webkit-appearance:none;
+  height:2px; background:var(--border);
+  border-radius:1px; outline:none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none;
+  width:18px; height:18px; border-radius:50%;
+  background:var(--accent); cursor:pointer;
+  box-shadow:0 2px 6px rgba(0,0,0,0.5);
+}
+
+/* ── EXIF list ── */
+.exif-item {
+  display:flex; justify-content:space-between;
+  align-items:center; padding:9px 0;
+  border-bottom:1px solid rgba(255,255,255,0.04);
+  gap:12px; font-size:12px;
+}
+.exif-item:last-child { border-bottom:none; }
+.ek { color:var(--muted); flex-shrink:0; }
+.ev { color:var(--text); text-align:right; word-break:break-all; }
+.ev.hi { color:var(--accent); }
+.exif-empty { font-size:12px; color:var(--muted); padding:10px 0; }
+
+/* ── Stage (right / bottom) ── */
+.stage {
+  display:flex; flex-direction:column;
+  align-items:stretch;
+  background:
+    radial-gradient(ellipse at 15% 50%, rgba(200,169,110,0.04) 0%, transparent 55%),
+    radial-gradient(ellipse at 85% 15%, rgba(126,184,200,0.03) 0%, transparent 55%),
+    var(--bg);
+  padding:24px 20px;
+  gap:14px;
+}
+@media(min-width:780px){
+  .stage { padding:32px; justify-content:center; }
+}
+
+/* grid bg */
+.stage::before {
+  content:''; position:fixed; inset:0; pointer-events:none;
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size:44px 44px; opacity:0.18; z-index:0;
+}
+
+.canvas-wrap {
+  position:relative; z-index:1;
+  border-radius:10px; overflow:hidden;
+  box-shadow:0 16px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+}
+.canvas-empty {
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:14px; padding:64px 24px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  position:relative; z-index:1;
+}
+.canvas-empty-ico { font-size:52px; opacity:0.06; }
+.canvas-empty-txt { font-size:11px; color:var(--muted); letter-spacing:0.1em; }
+#out-canvas { display:block; width:100%; height:auto; }
+
+/* ── iOS hint ── */
+.ios-hint {
+  display:none;
+  background:rgba(200,169,110,0.08);
+  border:1px solid rgba(200,169,110,0.2);
+  border-radius:8px;
+  padding:10px 14px;
+  font-size:11px; color:var(--accent);
+  text-align:center; line-height:1.7;
+  position:relative; z-index:1;
+}
+.ios-hint.show { display:block; }
+
+/* ── Action buttons ── */
+.action-bar {
+  display:flex; gap:10px;
+  position:relative; z-index:1;
+}
+.btn {
+  flex:1; padding:15px 12px;
+  border-radius:10px;
+  font-family:'DM Mono', monospace;
+  font-size:12px; font-weight:500;
+  letter-spacing:0.14em; text-transform:uppercase;
+  cursor:pointer; transition:all 0.15s;
+  border:none;
+}
+.btn:active { transform:scale(0.97); }
+.btn-primary { background:var(--accent); color:#0e0e0e; flex:3; }
+.btn-primary:disabled { opacity:0.28; cursor:not-allowed; }
+.btn-secondary {
+  background:transparent;
+  color:var(--muted);
+  border:1.5px solid var(--border);
+  flex:1;
+}
+
+/* ── Loading ── */
+.overlay {
+  display:none; position:fixed; inset:0;
+  background:rgba(10,10,10,0.82);
+  backdrop-filter:blur(4px);
+  -webkit-backdrop-filter:blur(4px);
+  z-index:200;
+  align-items:center; justify-content:center;
+  flex-direction:column; gap:16px;
+}
+.overlay.show { display:flex; }
+.spin {
+  width:34px; height:34px;
+  border:2px solid var(--border);
+  border-top-color:var(--accent);
+  border-radius:50%;
+  animation:spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+.overlay p { font-size:11px; color:var(--muted); letter-spacing:0.15em; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Exif Frame</h1>
+  <small>照片水印</small>
+  <div class="header-dot" id="headerDot"></div>
+</header>
+
+<div class="page">
+
+  <!-- ══ 左侧控制面板 ══ -->
+  <div class="panel">
+
+    <!-- 上传 -->
+    <div class="section">
+      <div class="section-label">选择照片</div>
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="fileInput" accept="image/*">
+        <div class="upload-ico" id="uploadIco">⬡</div>
+        <div class="upload-label" id="uploadLabel">点击选择照片</div>
+        <div class="upload-sub" id="uploadSub">JPG · HEIC · PNG · TIFF</div>
+      </div>
+    </div>
+
+    <!-- 水印样式 -->
+    <div class="section">
+      <div class="section-label">水印样式</div>
+      <div class="style-grid">
+        <button class="style-btn on" data-s="film"><span class="ico">🎞</span>胶片边框</button>
+        <button class="style-btn" data-s="minimal"><span class="ico">▬</span>简约底栏</button>
+        <button class="style-btn" data-s="corner"><span class="ico">◰</span>角落印记</button>
+        <button class="style-btn" data-s="polaroid"><span class="ico">⬜</span>拍立得</button>
+      </div>
+    </div>
+
+    <!-- 颜色主题 -->
+    <div class="section">
+      <div class="section-label">颜色主题</div>
+      <div class="dots">
+        <div class="dot on" data-t="dark"   style="background:#1c1c1c;box-shadow:inset 0 0 0 1px #555"></div>
+        <div class="dot" data-t="cream"  style="background:#f5f0e8"></div>
+        <div class="dot" data-t="gold"   style="background:#c8a96e"></div>
+        <div class="dot" data-t="silver" style="background:#9aa8b0"></div>
+        <div class="dot" data-t="wine"   style="background:#6b2d3e"></div>
+        <div class="dot" data-t="forest" style="background:#2d4a3e"></div>
+      </div>
+    </div>
+
+    <!-- 显示内容 -->
+    <div class="section">
+      <div class="section-label">显示内容</div>
+      <div class="toggle-row" data-f="camera"><span class="toggle-label">相机型号</span><div class="toggle-switch on"></div></div>
+      <div class="toggle-row" data-f="lens">  <span class="toggle-label">镜头信息</span><div class="toggle-switch on"></div></div>
+      <div class="toggle-row" data-f="params"><span class="toggle-label">快门 / 光圈 / ISO</span><div class="toggle-switch on"></div></div>
+      <div class="toggle-row" data-f="focal"> <span class="toggle-label">焦距</span><div class="toggle-switch on"></div></div>
+      <div class="toggle-row" data-f="date">  <span class="toggle-label">拍摄时间</span><div class="toggle-switch on"></div></div>
+      <div class="toggle-row" data-f="gps">   <span class="toggle-label">GPS 坐标</span><div class="toggle-switch"></div></div>
+    </div>
+
+    <!-- 参数调整 -->
+    <div class="section">
+      <div class="section-label">参数调整</div>
+      <div class="slider-row">
+        <div class="slider-item">
+          <div class="slider-meta">水印区高度 <span id="vBarSize">18%</span></div>
+          <input type="range" id="sBarSize" min="10" max="35" value="18">
+        </div>
+        <div class="slider-item">
+          <div class="slider-meta">字体大小 <span id="vFontSize">100%</span></div>
+          <input type="range" id="sFontSize" min="60" max="160" value="100">
+        </div>
+        <div class="slider-item">
+          <div class="slider-meta">输出质量 <span id="vQuality">92%</span></div>
+          <input type="range" id="sQuality" min="60" max="100" value="92">
+        </div>
+      </div>
+    </div>
+
+    <!-- EXIF -->
+    <div class="section">
+      <div class="section-label">识别到的 EXIF</div>
+      <div id="exifPanel"><div class="exif-empty">上传照片后显示</div></div>
+    </div>
+
+  </div><!-- /panel -->
+
+  <!-- ══ 右侧 / 底部预览区 ══ -->
+  <div class="stage">
+
+    <!-- 空状态 -->
+    <div class="canvas-empty" id="emptyState">
+      <div class="canvas-empty-ico">◈</div>
+      <div class="canvas-empty-txt">上传照片以预览水印效果</div>
+    </div>
+
+    <!-- 画布 -->
+    <div class="canvas-wrap" id="canvasWrap" style="display:none">
+      <canvas id="out-canvas"></canvas>
+    </div>
+
+    <!-- iOS 长按保存提示 -->
+    <div class="ios-hint" id="iosHint">
+      📱 长按上方图片 → 「存储到照片」即可保存<br>
+      <span style="opacity:0.6;font-size:10px">或点击下方按钮下载到文件 App</span>
+    </div>
+
+    <!-- 操作按钮 -->
+    <div class="action-bar">
+      <button class="btn btn-secondary" id="reuploadBtn" onclick="document.getElementById('fileInput').click()">换图</button>
+      <button class="btn btn-primary" id="exportBtn" disabled>保存水印照片</button>
+    </div>
+
+  </div><!-- /stage -->
+
+</div><!-- /page -->
+
+<div class="overlay" id="overlay">
+  <div class="spin"></div>
+  <p>读取 EXIF · 渲染中…</p>
+</div>
+
+<script>
+// ── 状态 ──
+const S = {
+  img: null, exif: {}, filename: '',
+  style: 'film', theme: 'dark',
+  fields: { camera:true, lens:true, params:true, focal:true, date:true, gps:false },
+  barSize: 18, fontSize: 100, quality: 92,
+};
+
+const THEMES = {
+  dark:   { bg:'#1a1a1a', text:'#e8e4dc', accent:'#c8a96e', sub:'#777', logo:'#c8a96e' },
+  cream:  { bg:'#f5f0e8', text:'#1a1a1a', accent:'#8b6a3e', sub:'#9a8a7a', logo:'#8b6a3e' },
+  gold:   { bg:'#c8a96e', text:'#1a1a1a', accent:'#fff', sub:'rgba(0,0,0,0.45)', logo:'#1a1a1a' },
+  silver: { bg:'#9aa8b0', text:'#1a1a1a', accent:'#fff', sub:'rgba(0,0,0,0.38)', logo:'#1a1a1a' },
+  wine:   { bg:'#6b2d3e', text:'#f5eeea', accent:'#e8b4a0', sub:'rgba(255,255,255,0.45)', logo:'#e8b4a0' },
+  forest: { bg:'#2d4a3e', text:'#e8f0ec', accent:'#9dc4b0', sub:'rgba(255,255,255,0.45)', logo:'#9dc4b0' },
+};
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+// ── EXIF 解析 ──
+function parseExif(file) {
+  return new Promise(res => {
+    EXIF.getData(file, function() {
+      const t = EXIF.getAllTags(this), d = {};
+      // 相机
+      d.camera = [t.Make, t.Model].filter(Boolean).join(' ').trim();
+      if (d.camera && t.Make && d.camera.startsWith(t.Make+' '+t.Make))
+        d.camera = d.camera.slice(t.Make.length+1);
+      d.lens = t.LensModel || t.Lens || '';
+      // 快门
+      if (t.ExposureTime) d.shutter = t.ExposureTime < 1 ? `1/${Math.round(1/t.ExposureTime)}s` : `${t.ExposureTime}s`;
+      // 光圈
+      if (t.FNumber) d.aperture = `f/${t.FNumber}`;
+      else if (t.ApertureValue) d.aperture = `f/${Math.pow(2, t.ApertureValue/2).toFixed(1)}`;
+      // ISO
+      if (t.ISOSpeedRatings) d.iso = `ISO ${Array.isArray(t.ISOSpeedRatings)?t.ISOSpeedRatings[0]:t.ISOSpeedRatings}`;
+      // 焦距
+      if (t.FocalLength) d.focal = `${t.FocalLength}mm`;
+      // 时间
+      if (t.DateTimeOriginal) {
+        const p = t.DateTimeOriginal.split(' ');
+        if (p.length===2) { d.date = p[0].replace(/:/g,'/'); d.time = p[1].slice(0,5); }
+      }
+      // GPS
+      if (t.GPSLatitude && t.GPSLongitude) {
+        const dec = (a,r) => { if(!a) return null; const v=a[0]+a[1]/60+a[2]/3600; return (r==='S'||r==='W')?-v:v; };
+        const la=dec(t.GPSLatitude,t.GPSLatitudeRef), lo=dec(t.GPSLongitude,t.GPSLongitudeRef);
+        if (la!==null) d.gps = `${Math.abs(la).toFixed(4)}°${t.GPSLatitudeRef} ${Math.abs(lo).toFixed(4)}°${t.GPSLongitudeRef}`;
+      }
+      res(d);
+    });
+  });
+}
+
+// ── EXIF 面板 ──
+function renderExifPanel(e) {
+  const rows = [
+    {k:'相机',v:e.camera,hi:1},{k:'镜头',v:e.lens},{k:'快门',v:e.shutter,hi:1},
+    {k:'光圈',v:e.aperture,hi:1},{k:'ISO',v:e.iso,hi:1},{k:'焦距',v:e.focal},
+    {k:'日期',v:e.date},{k:'时间',v:e.time},{k:'GPS',v:e.gps},
+  ].filter(r=>r.v);
+  const el = document.getElementById('exifPanel');
+  if (!rows.length) { el.innerHTML='<div class="exif-empty">未读取到 EXIF（JPEG 最佳）</div>'; return; }
+  el.innerHTML = rows.map(r=>`<div class="exif-item"><span class="ek">${r.k}</span><span class="ev${r.hi?' hi':''}">${r.v}</span></div>`).join('');
+}
+
+// ── Canvas 渲染 ──
+function render() {
+  if (!S.img) return;
+  const cv = document.getElementById('out-canvas');
+  const ctx = cv.getContext('2d');
+  const img = S.img, e = S.exif, th = THEMES[S.theme], f = S.fields;
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const scale = S.fontSize/100;
+  const BASE = Math.max(W,H)*0.018*scale;
+  const barR = S.barSize/100;
+
+  let TH = H, CW = W;
+  if (S.style==='polaroid') { TH=H+Math.round(H*barR)+Math.round(H*0.04); CW=W+Math.round(W*0.04); }
+  else if (S.style==='corner') { TH=H; }
+  else { TH=H+Math.round(H*barR); }
+  cv.width=CW; cv.height=TH;
+
+  const ox = S.style==='polaroid'?Math.round(W*0.02):0;
+  const oy = S.style==='polaroid'?Math.round(H*0.02):0;
+  ctx.drawImage(img,ox,oy,W,H);
+
+  if (S.style==='film')     drawFilm(ctx,W,H,TH,CW,th,e,f,BASE);
+  if (S.style==='minimal')  drawMinimal(ctx,W,H,TH,CW,th,e,f,BASE);
+  if (S.style==='corner')   drawCorner(ctx,W,H,CW,th,e,f,BASE);
+  if (S.style==='polaroid') drawPolaroid(ctx,W,H,TH,CW,th,e,f,BASE,ox,oy);
+
+  document.getElementById('emptyState').style.display='none';
+  document.getElementById('canvasWrap').style.display='block';
+  if (isIOS) document.getElementById('iosHint').classList.add('show');
+}
+
+function drawFilm(ctx,W,H,TH,CW,th,e,f,B){
+  const bH=TH-H,bY=H,pad=W*0.03,cx=CW/2,mY=bY+bH/2;
+  ctx.fillStyle=th.bg; ctx.fillRect(0,bY,CW,bH);
+  ctx.fillStyle=th.accent; ctx.fillRect(0,bY,CW,1);
+  // 左：品牌
+  if(f.camera&&e.camera){
+    const ps=e.camera.split(' '),brand=ps[0],model=ps.slice(1).join(' ');
+    ctx.textAlign='left';
+    ctx.font=`700 ${B*1.4}px 'DM Mono',monospace`; ctx.fillStyle=th.logo;
+    ctx.fillText(brand.toUpperCase(),pad,mY-B*0.2);
+    if(model){ ctx.font=`300 ${B*0.85}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; ctx.fillText(model,pad,mY+B*1.1); }
+  }
+  // 中：参数
+  if(f.params&&(e.shutter||e.aperture||e.iso)){
+    const ps=[e.shutter,e.aperture,e.iso].filter(Boolean);
+    ctx.textAlign='center';
+    ctx.font=`400 ${B*1.1}px 'DM Mono',monospace`; ctx.fillStyle=th.text;
+    ctx.fillText(ps.join('   '),cx,mY+B*0.5);
+    const pw=ps.map(p=>{ctx.font=`400 ${B*1.1}px 'DM Mono',monospace`;return ctx.measureText(p).width;});
+    const gw=ctx.measureText('   ').width;
+    const tw=pw.reduce((a,b)=>a+b,0)+gw*(ps.length-1);
+    let x=cx-tw/2;
+    const labs=[e.shutter?'SS':null,e.aperture?'APT':null,e.iso?'ISO':null].filter(Boolean);
+    ctx.font=`300 ${B*0.65}px 'DM Mono',monospace`; ctx.fillStyle=th.sub;
+    labs.forEach((lb,i)=>{ ctx.fillText(lb,x+pw[i]/2,mY-B*0.65); x+=pw[i]+gw; });
+    if(f.focal&&e.focal){ ctx.font=`300 ${B*0.75}px 'DM Mono',monospace`; ctx.fillStyle=th.accent; ctx.textAlign='center'; ctx.fillText(e.focal,cx,mY+B*1.65); }
+  }
+  // 右：时间
+  ctx.textAlign='right';
+  if(f.date&&(e.date||e.time)){
+    if(e.date){ ctx.font=`400 ${B*0.85}px 'DM Mono',monospace`; ctx.fillStyle=th.text; ctx.fillText(e.date,CW-pad,mY-B*0.2); }
+    if(e.time){ ctx.font=`300 ${B*0.75}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; ctx.fillText(e.time,CW-pad,mY+B*1.1); }
+    if(f.gps&&e.gps){ ctx.font=`300 ${B*0.6}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; ctx.fillText('📍 '+e.gps,CW-pad,mY+B*2.1); }
+  } else if(f.lens&&e.lens){
+    ctx.font=`300 ${B*0.8}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; ctx.fillText(e.lens,CW-pad,mY+B*0.5);
+  }
+  // 分隔线
+  ctx.strokeStyle=th.accent; ctx.lineWidth=0.5; ctx.globalAlpha=0.25;
+  ctx.beginPath(); ctx.moveTo(cx-W*0.18,bY+bH*0.2); ctx.lineTo(cx-W*0.18,bY+bH*0.8); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx+W*0.18,bY+bH*0.2); ctx.lineTo(cx+W*0.18,bY+bH*0.8); ctx.stroke();
+  ctx.globalAlpha=1;
+}
+
+function drawMinimal(ctx,W,H,TH,CW,th,e,f,B){
+  const bH=TH-H,bY=H,pad=W*0.04,vC=bY+bH/2;
+  ctx.fillStyle=th.bg; ctx.fillRect(0,bY,CW,bH);
+  ctx.fillStyle=th.accent; ctx.fillRect(0,bY,3,bH);
+  ctx.textBaseline='middle';
+  let xL=pad+12;
+  if(f.camera&&e.camera){ ctx.textAlign='left'; ctx.font=`500 ${B}px 'DM Mono',monospace`; ctx.fillStyle=th.text; ctx.fillText(e.camera,xL,vC); xL+=ctx.measureText(e.camera).width+B*2; }
+  if(f.params){ [e.shutter,e.aperture,e.iso].filter(Boolean).forEach((p,i,a)=>{ ctx.font=`300 ${B*0.9}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; ctx.fillText(p,xL,vC); xL+=ctx.measureText(p).width; if(i<a.length-1){ ctx.fillStyle=th.accent; ctx.fillText('  ·  ',xL,vC); xL+=ctx.measureText('  ·  ').width; } }); }
+  ctx.textAlign='right'; let xR=CW-pad;
+  if(f.date&&e.date){ ctx.font=`300 ${B*0.85}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; const ds=(e.time?e.time+'  ':'')+e.date; ctx.fillText(ds,xR,vC); xR-=ctx.measureText(ds).width+B*2; }
+  if(f.focal&&e.focal){ ctx.font=`400 ${B*0.9}px 'DM Mono',monospace`; ctx.fillStyle=th.accent; ctx.fillText(e.focal,xR,vC); }
+}
+
+function drawCorner(ctx,W,H,CW,th,e,f,B){
+  const pad=W*0.025,lH=B*1.5,lines=[];
+  if(f.camera&&e.camera) lines.push({t:e.camera,s:B,c:th.text,bold:1});
+  if(f.lens&&e.lens) lines.push({t:e.lens,s:B*0.8,c:th.sub});
+  if(f.params){ const p=[e.shutter,e.aperture,e.iso,f.focal?e.focal:null].filter(Boolean); if(p.length) lines.push({t:p.join('  '),s:B*0.85,c:th.accent}); }
+  if(f.date&&e.date) lines.push({t:e.date+(e.time?'  '+e.time:''),s:B*0.75,c:th.sub});
+  if(!lines.length) return;
+  const bkH=lines.length*lH+pad;
+  const bkW=Math.max(...lines.map(l=>{ ctx.font=`${l.bold?'500':'300'} ${l.s}px 'DM Mono',monospace`; return ctx.measureText(l.t).width; }))+pad*2;
+  const bx=CW-bkW-pad, by=H-bkH-pad;
+  ctx.fillStyle=th.bg; ctx.globalAlpha=0.88; ctx.fillRect(bx,by,bkW,bkH); ctx.globalAlpha=1;
+  ctx.fillStyle=th.accent; ctx.fillRect(bx,by,2,bkH);
+  lines.forEach((l,i)=>{ ctx.font=`${l.bold?'500':'300'} ${l.s}px 'DM Mono',monospace`; ctx.fillStyle=l.c; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(l.t,bx+pad,by+pad/2+lH*(i+0.5)); });
+}
+
+function drawPolaroid(ctx,W,H,TH,CW,th,e,f,B,ox,oy){
+  const sW=Math.round(W*0.02), bH2=TH-H-sW*2;
+  ctx.fillStyle=th.bg; ctx.fillRect(0,0,CW,TH);
+  const bY=oy+H, cx=CW/2, vC=bY+bH2/2;
+  ctx.textBaseline='middle'; ctx.textAlign='center';
+  if(f.camera&&e.camera){ ctx.font=`700 ${B*1.1}px 'DM Mono',monospace`; ctx.fillStyle=th.logo; ctx.fillText(e.camera.toUpperCase(),cx,vC-B*1.2); }
+  if(f.params){ const p=[e.shutter,e.aperture,e.iso,f.focal?e.focal:null].filter(Boolean); ctx.font=`300 ${B*0.8}px 'DM Mono',monospace`; ctx.fillStyle=th.sub; ctx.fillText(p.join('   '),cx,vC+B*0.2); }
+  if(f.date&&e.date){ ctx.font=`300 ${B*0.75}px 'DM Mono',monospace`; ctx.fillStyle=th.accent; ctx.fillText(e.date+(e.time?'  '+e.time:''),cx,vC+B*1.6); }
+  ctx.fillStyle=th.accent; ctx.globalAlpha=0.45; ctx.fillRect(ox,bY,W,1); ctx.globalAlpha=1;
+}
+
+// ── 文件处理 ──
+async function handleFile(file) {
+  document.getElementById('overlay').classList.add('show');
+  S.filename = file.name.replace(/\.[^.]+$/,'');
+  try {
+    S.exif = await parseExif(file);
+    renderExifPanel(S.exif);
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      S.img = img;
+      render();
+      document.getElementById('exportBtn').disabled = false;
+      document.getElementById('headerDot').classList.add('ready');
+      // 更新上传区
+      document.getElementById('uploadZone').classList.add('active-file');
+      document.getElementById('uploadIco').textContent = '✓';
+      document.getElementById('uploadLabel').innerHTML = `<span class="upload-filename">${file.name.length>28?file.name.slice(0,26)+'…':file.name}</span>`;
+      document.getElementById('uploadSub').textContent = '点击重新选择';
+      document.getElementById('overlay').classList.remove('show');
+    };
+    img.onerror = () => { document.getElementById('overlay').classList.remove('show'); alert('图片加载失败，请尝试 JPEG 格式'); };
+    img.src = url;
+  } catch(err) {
+    document.getElementById('overlay').classList.remove('show');
+    console.error(err);
+  }
+}
+
+// ── 导出 ──
+function doExport() {
+  const cv = document.getElementById('out-canvas');
+  const q = S.quality/100;
+  if (isIOS) {
+    // iOS Safari 无法直接 download，开新页让用户长按保存
+    const data = cv.toDataURL('image/jpeg', q);
+    const w = window.open('');
+    w.document.write(`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width"><title>长按保存</title><style>body{margin:0;background:#000;display:flex;flex-direction:column;align-items:center}p{color:#888;font-size:13px;font-family:sans-serif;padding:18px;text-align:center}img{width:100%;display:block}</style></head><body><p>长按图片 → 「存储到照片」</p><img src="${data}"></body></html>`);
+  } else {
+    const a = document.createElement('a');
+    a.download = S.filename + '_watermark.jpg';
+    a.href = cv.toDataURL('image/jpeg', q);
+    a.click();
+  }
+}
+
+// ── 事件绑定 ──
+const fi = document.getElementById('fileInput');
+document.getElementById('uploadZone').addEventListener('click', () => fi.click());
+fi.addEventListener('change', () => { if(fi.files[0]) handleFile(fi.files[0]); });
+
+// 拖拽（桌面）
+const uz = document.getElementById('uploadZone');
+uz.addEventListener('dragover', e=>{ e.preventDefault(); uz.style.borderColor='var(--accent)'; });
+uz.addEventListener('dragleave', ()=>{ uz.style.borderColor=''; });
+uz.addEventListener('drop', e=>{ e.preventDefault(); uz.style.borderColor=''; if(e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+
+// 样式
+document.querySelectorAll('.style-btn').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('.style-btn').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); S.style=b.dataset.s; render();
+  });
+});
+
+// 主题
+document.querySelectorAll('.dot').forEach(d=>{
+  d.addEventListener('click',()=>{
+    document.querySelectorAll('.dot').forEach(x=>x.classList.remove('on'));
+    d.classList.add('on'); S.theme=d.dataset.t; render();
+  });
+});
+
+// 字段开关
+document.querySelectorAll('.toggle-row').forEach(row=>{
+  row.addEventListener('click',()=>{
+    const f=row.dataset.f;
+    S.fields[f]=!S.fields[f];
+    row.querySelector('.toggle-switch').classList.toggle('on',S.fields[f]);
+    render();
+  });
+});
+
+// 滑块
+[['sBarSize','vBarSize','barSize','%'],['sFontSize','vFontSize','fontSize','%'],['sQuality','vQuality','quality','%']].forEach(([sid,vid,key,suf])=>{
+  document.getElementById(sid).addEventListener('input',function(){
+    S[key]=parseInt(this.value);
+    document.getElementById(vid).textContent=this.value+suf;
+    render();
+  });
+});
+
+document.getElementById('exportBtn').addEventListener('click', doExport);
+</script>
+</body>
+</html>
