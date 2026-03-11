@@ -7,24 +7,38 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Exif Frame">
 <title>Exif Frame · 照片水印</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"><\/script>
+<!-- exifr：比 exif-js 兼容性更好，原生支持 HEIC 元数据、GPS 浮点、Date 对象 -->
+<script src="https://cdn.jsdelivr.net/npm/exifr/dist/lite.umd.js"></script>
+<!-- heic2any：iOS HEIC 格式转 JPEG，供 canvas 渲染 -->
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 <style>
+/* 字体：Google Fonts + 完整系统字体回退链，避免国内加载失败导致排版错位 */
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@300;400;500&display=swap');
-:root{--bg:#0e0e0e;--surface:#161616;--border:#252525;--accent:#c8a96e;--text:#e8e4dc;--muted:#5a5a5a;--white:#fff}
+:root{
+  --bg:#0e0e0e;--surface:#161616;--border:#252525;--accent:#c8a96e;
+  --text:#e8e4dc;--muted:#5a5a5a;--white:#fff;
+  --mono:'DM Mono',ui-monospace,'Cascadia Code','Source Code Pro',Menlo,Consolas,monospace;
+  --serif:'DM Serif Display',Georgia,'Times New Roman',serif;
+}
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{background:var(--bg);color:var(--text);font-family:'DM Mono',monospace;min-height:100dvh;overflow-x:hidden}
+html,body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100dvh;overflow-x:hidden}
 header{position:sticky;top:0;z-index:60;background:rgba(14,14,14,.9);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border);padding:14px 20px;display:flex;align-items:center;gap:12px}
-header h1{font-family:'DM Serif Display',serif;font-size:20px;font-weight:400;color:var(--white);letter-spacing:.02em}
+header h1{font-family:var(--serif);font-size:20px;font-weight:400;color:var(--white);letter-spacing:.02em}
 header small{font-size:10px;color:var(--muted);letter-spacing:.18em;text-transform:uppercase}
 .hdot{margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--border);transition:background .3s}
 .hdot.ready{background:var(--accent)}
 .page{display:grid;grid-template-columns:1fr}
-@media(min-width:780px){.page{grid-template-columns:310px 1fr;min-height:calc(100dvh - 53px)}.panel{border-right:1px solid var(--border);overflow-y:auto;max-height:calc(100dvh - 53px)}.stage{position:sticky;top:53px;height:calc(100dvh - 53px);overflow:auto}}
+@media(min-width:780px){
+  .page{grid-template-columns:310px 1fr;min-height:calc(100dvh - 53px)}
+  .panel{border-right:1px solid var(--border);overflow-y:auto;max-height:calc(100dvh - 53px)}
+  .stage{position:sticky;top:53px;height:calc(100dvh - 53px);overflow:auto}
+}
 .panel{display:flex;flex-direction:column;border-bottom:1px solid var(--border)}
 .sec{border-bottom:1px solid var(--border);padding:18px 20px}
 .sec:last-child{border-bottom:none}
 .sec-lbl{font-size:9px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-bottom:14px}
 .upload-zone{border:1.5px dashed var(--border);border-radius:12px;padding:28px 16px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;transition:all .2s;text-align:center}
+.upload-zone:hover{border-color:var(--accent);background:rgba(200,169,110,.04)}
 .upload-zone.has-img{border-color:var(--accent);border-style:solid;background:rgba(200,169,110,.04);padding:14px 16px}
 .upload-zone input{display:none}
 .upload-ico{font-size:28px;opacity:.25;line-height:1}
@@ -32,11 +46,11 @@ header small{font-size:10px;color:var(--muted);letter-spacing:.18em;text-transfo
 .upload-lbl{font-size:13px;color:var(--muted);line-height:1.5}
 .upload-fname{font-size:12px;color:var(--accent);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
 .upload-sub{font-size:10px;color:var(--muted);opacity:.5}
-.crop-btn-entry{display:none;width:100%;margin-top:10px;padding:11px;border:1.5px solid var(--border);border-radius:6px;background:transparent;color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:all .15s}
+.crop-btn-entry{display:none;width:100%;margin-top:10px;padding:11px;border:1.5px solid var(--border);border-radius:6px;background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:all .15s}
 .crop-btn-entry.show{display:block}
 .crop-btn-entry:hover{border-color:var(--accent);color:var(--accent)}
 .style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.style-btn{padding:12px 6px;border:1.5px solid var(--border);border-radius:10px;background:transparent;color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.06em;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:5px;text-transform:uppercase}
+.style-btn{padding:12px 6px;border:1.5px solid var(--border);border-radius:10px;background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.06em;cursor:pointer;transition:all .15s;display:flex;flex-direction:column;align-items:center;gap:5px;text-transform:uppercase}
 .style-btn .ico{font-size:20px}
 .style-btn.on{border-color:var(--accent);color:var(--accent);background:rgba(200,169,110,.08)}
 .dots{display:flex;gap:9px;flex-wrap:wrap}
@@ -62,6 +76,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .ev{color:var(--text);text-align:right;word-break:break-all}
 .ev.hi{color:var(--accent)}
 .exif-empty{font-size:12px;color:var(--muted);padding:10px 0}
+.exif-warn{font-size:11px;color:#e8a87c;line-height:1.6;background:rgba(232,168,124,.06);border-radius:6px;padding:8px 10px;border:1px solid rgba(232,168,124,.15);margin-bottom:8px}
 .stage{display:flex;flex-direction:column;align-items:stretch;background:var(--bg);padding:24px 20px;gap:14px;position:relative}
 .stage::before{content:'';position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(var(--border) 1px,transparent 1px),linear-gradient(90deg,var(--border) 1px,transparent 1px);background-size:44px 44px;opacity:.15;z-index:0}
 @media(min-width:780px){.stage{padding:32px;justify-content:center}}
@@ -73,30 +88,32 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .ios-hint{display:none;background:rgba(200,169,110,.08);border:1px solid rgba(200,169,110,.2);border-radius:8px;padding:10px 14px;font-size:11px;color:var(--accent);text-align:center;line-height:1.7;position:relative;z-index:1}
 .ios-hint.show{display:block}
 .action-bar{display:flex;gap:10px;position:relative;z-index:1}
-.btn{flex:1;padding:15px 12px;border-radius:10px;font-family:'DM Mono',monospace;font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;transition:all .15s;border:none}
+.btn{flex:1;padding:15px 12px;border-radius:10px;font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.14em;text-transform:uppercase;cursor:pointer;transition:all .15s;border:none}
 .btn:active{transform:scale(.97)}
 .btn-primary{background:var(--accent);color:#0e0e0e;flex:3}
 .btn-primary:disabled{opacity:.28;cursor:not-allowed}
 .btn-secondary{background:transparent;color:var(--muted);border:1.5px solid var(--border);flex:1}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
 .overlay{display:none;position:fixed;inset:0;background:rgba(10,10,10,.82);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:16px}
 .overlay.show{display:flex}
 .spin{width:34px;height:34px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .75s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
-.overlay p{font-size:11px;color:var(--muted);letter-spacing:.15em}
+.overlay p{font-size:11px;color:var(--muted);letter-spacing:.12em;text-align:center;line-height:1.7}
 .crop-modal{display:none;position:fixed;inset:0;z-index:500;background:rgba(6,6,6,.97);flex-direction:column;align-items:stretch}
 .crop-modal.open{display:flex}
 .crop-topbar{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.crop-topbar h2{font-family:'DM Mono',monospace;font-size:12px;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text)}
+.crop-topbar h2{font-family:var(--mono);font-size:12px;font-weight:400;letter-spacing:.2em;text-transform:uppercase;color:var(--text)}
 .crop-x{background:transparent;border:none;color:var(--muted);font-size:24px;cursor:pointer;line-height:1;padding:0 4px}
 .crop-x:hover{color:var(--text)}
 .crop-ratios{display:flex;gap:6px;padding:12px 20px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid var(--border)}
-.ratio-btn{padding:6px 13px;border:1.5px solid var(--border);border-radius:4px;background:transparent;color:var(--muted);font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.06em;cursor:pointer;transition:all .15s}
+.ratio-btn{padding:6px 13px;border:1.5px solid var(--border);border-radius:4px;background:transparent;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:.06em;cursor:pointer;transition:all .15s}
 .ratio-btn.on{border-color:var(--accent);color:var(--accent);background:rgba(200,169,110,.1)}
 .crop-stage{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:16px}
 .crop-img-wrap{position:relative;display:inline-block;touch-action:none;user-select:none;-webkit-user-select:none}
-#crop-canvas{display:block;cursor:move}
+#crop-canvas{display:block}
+.crop-hint{font-size:10px;color:var(--muted);letter-spacing:.08em;padding:6px 20px;flex-shrink:0;text-align:center;opacity:.6}
 .crop-footer{padding:14px 20px;display:flex;gap:10px;flex-shrink:0;border-top:1px solid var(--border)}
-.cbtn{flex:1;padding:13px;border-radius:4px;font-family:'DM Mono',monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;transition:all .15s;border:none}
+.cbtn{flex:1;padding:13px;border-radius:4px;font-family:var(--mono);font-size:11px;letter-spacing:.15em;text-transform:uppercase;cursor:pointer;transition:all .15s;border:none}
 .cbtn-p{background:var(--accent);color:#0e0e0e;flex:3;font-weight:500}
 .cbtn-p:hover{background:#d4b87a}
 .cbtn-s{background:transparent;color:var(--muted);border:1.5px solid var(--border);flex:1}
@@ -116,7 +133,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
     <div class="sec">
       <div class="sec-lbl">选择照片</div>
       <div class="upload-zone" id="uploadZone">
-        <input type="file" id="fileInput" accept="image/*">
+        <input type="file" id="fileInput" accept="image/*,.heic,.heif">
         <div class="upload-ico" id="uploadIco">⬡</div>
         <div class="upload-lbl" id="uploadLbl">点击选择照片</div>
         <div class="upload-sub" id="uploadSub">JPG · HEIC · PNG · TIFF</div>
@@ -135,12 +152,12 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
     <div class="sec">
       <div class="sec-lbl">颜色主题</div>
       <div class="dots">
-        <div class="dot on" data-t="dark"   style="background:#1c1c1c;box-shadow:inset 0 0 0 1px #555"></div>
-        <div class="dot" data-t="cream"  style="background:#f5f0e8"></div>
-        <div class="dot" data-t="gold"   style="background:#c8a96e"></div>
-        <div class="dot" data-t="silver" style="background:#9aa8b0"></div>
-        <div class="dot" data-t="wine"   style="background:#6b2d3e"></div>
-        <div class="dot" data-t="forest" style="background:#2d4a3e"></div>
+        <div class="dot on" data-t="dark"   style="background:#1c1c1c;box-shadow:inset 0 0 0 1px #555" title="深色"></div>
+        <div class="dot" data-t="cream"  style="background:#f5f0e8" title="奶油"></div>
+        <div class="dot" data-t="gold"   style="background:#c8a96e" title="金色"></div>
+        <div class="dot" data-t="silver" style="background:#9aa8b0" title="银色"></div>
+        <div class="dot" data-t="wine"   style="background:#6b2d3e" title="酒红"></div>
+        <div class="dot" data-t="forest" style="background:#2d4a3e" title="森林"></div>
       </div>
     </div>
     <div class="sec">
@@ -169,9 +186,9 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   <div class="stage">
     <div class="cv-empty" id="cvEmpty"><div class="cv-empty-ico">◈</div><div class="cv-empty-txt">上传照片以预览水印效果</div></div>
     <div class="cv-wrap" id="cvWrap" style="display:none"><canvas id="out-canvas"></canvas></div>
-    <div class="ios-hint" id="iosHint">📱 长按上方图片 → 「存储到照片」即可保存<br><span style="opacity:.6;font-size:10px">或点击下方按钮下载</span></div>
+    <div class="ios-hint" id="iosHint">📱 长按上方图片 → 「存储到照片」即可保存<br><span style="opacity:.6;font-size:10px">或点击下方按钮尝试下载</span></div>
     <div class="action-bar">
-      <button class="btn btn-secondary" onclick="document.getElementById('fileInput').click()">换图</button>
+      <button class="btn btn-secondary" id="changeBtn">换图</button>
       <button class="btn btn-primary" id="exportBtn" disabled>保存水印照片</button>
     </div>
   </div>
@@ -196,75 +213,599 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
       <canvas id="crop-canvas"></canvas>
     </div>
   </div>
+  <div class="crop-hint">拖动选区移动 · 拖动四角调整大小（锁定比例时等比缩放）</div>
   <div class="crop-footer">
     <button class="cbtn cbtn-s" id="cropReset">重置</button>
     <button class="cbtn cbtn-p" id="cropConfirm">确认裁切</button>
   </div>
 </div>
 
-<div class="overlay" id="overlay"><div class="spin"></div><p>读取 EXIF · 渲染中…</p></div>
+<div class="overlay" id="overlay">
+  <div class="spin"></div>
+  <p id="overlayTxt">读取 EXIF · 渲染中…</p>
+</div>
 
 <script>
-const S={img:null,exif:{},filename:'',style:'film',theme:'dark',fields:{camera:true,lens:true,params:true,focal:true,date:true,gps:false},barSize:18,fontSize:100,quality:92};
-const THEMES={dark:{bg:'#1a1a1a',text:'#e8e4dc',accent:'#c8a96e',sub:'#777',logo:'#c8a96e'},cream:{bg:'#f5f0e8',text:'#1a1a1a',accent:'#8b6a3e',sub:'#9a8a7a',logo:'#8b6a3e'},gold:{bg:'#c8a96e',text:'#1a1a1a',accent:'#fff',sub:'rgba(0,0,0,.45)',logo:'#1a1a1a'},silver:{bg:'#9aa8b0',text:'#1a1a1a',accent:'#fff',sub:'rgba(0,0,0,.38)',logo:'#1a1a1a'},wine:{bg:'#6b2d3e',text:'#f5eeea',accent:'#e8b4a0',sub:'rgba(255,255,255,.45)',logo:'#e8b4a0'},forest:{bg:'#2d4a3e',text:'#e8f0ec',accent:'#9dc4b0',sub:'rgba(255,255,255,.45)',logo:'#9dc4b0'}};
-const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)&&!window.MSStream;
+/* ══════════════════════════════════════════════════════
+   全局状态
+══════════════════════════════════════════════════════ */
+const S = {
+  img: null,      // 渲染用图（大图时为降采样版）
+  origImg: null,  // 原图 / HEIC转换后JPEG（导出用）
+  exif: {},
+  filename: '',
+  style: 'film',
+  theme: 'dark',
+  fields: { camera:true, lens:true, params:true, focal:true, date:true, gps:false },
+  barSize: 18,
+  fontSize: 100,
+  quality: 92
+};
 
-function parseExif(file){return new Promise(res=>{EXIF.getData(file,function(){const t=EXIF.getAllTags(this),d={};d.camera=[t.Make,t.Model].filter(Boolean).join(' ').trim();if(d.camera&&t.Make&&d.camera.startsWith(t.Make+' '+t.Make))d.camera=d.camera.slice(t.Make.length+1);d.lens=t.LensModel||t.Lens||'';if(t.ExposureTime)d.shutter=t.ExposureTime<1?'1/'+Math.round(1/t.ExposureTime)+'s':t.ExposureTime+'s';if(t.FNumber)d.aperture='f/'+t.FNumber;else if(t.ApertureValue)d.aperture='f/'+Math.pow(2,t.ApertureValue/2).toFixed(1);if(t.ISOSpeedRatings)d.iso='ISO '+(Array.isArray(t.ISOSpeedRatings)?t.ISOSpeedRatings[0]:t.ISOSpeedRatings);if(t.FocalLength)d.focal=t.FocalLength+'mm';if(t.DateTimeOriginal){const p=t.DateTimeOriginal.split(' ');if(p.length===2){d.date=p[0].replace(/:/g,'/');d.time=p[1].slice(0,5);}}if(t.GPSLatitude&&t.GPSLongitude){const dec=(a,r)=>{if(!a)return null;const v=a[0]+a[1]/60+a[2]/3600;return(r==='S'||r==='W')?-v:v;};const la=dec(t.GPSLatitude,t.GPSLatitudeRef),lo=dec(t.GPSLongitude,t.GPSLongitudeRef);if(la!==null)d.gps=Math.abs(la).toFixed(4)+'°'+t.GPSLatitudeRef+' '+Math.abs(lo).toFixed(4)+'°'+t.GPSLongitudeRef;}res(d);});})}
+const THEMES = {
+  dark:   { bg:'#1a1a1a', text:'#e8e4dc', accent:'#c8a96e', sub:'#777',                 logo:'#c8a96e' },
+  cream:  { bg:'#f5f0e8', text:'#1a1a1a', accent:'#8b6a3e', sub:'#9a8a7a',              logo:'#8b6a3e' },
+  gold:   { bg:'#c8a96e', text:'#1a1a1a', accent:'#fff',    sub:'rgba(0,0,0,.45)',       logo:'#1a1a1a' },
+  silver: { bg:'#9aa8b0', text:'#1a1a1a', accent:'#fff',    sub:'rgba(0,0,0,.38)',       logo:'#1a1a1a' },
+  wine:   { bg:'#6b2d3e', text:'#f5eeea', accent:'#e8b4a0', sub:'rgba(255,255,255,.45)', logo:'#e8b4a0' },
+  forest: { bg:'#2d4a3e', text:'#e8f0ec', accent:'#9dc4b0', sub:'rgba(255,255,255,.45)', logo:'#9dc4b0' }
+};
 
-function renderExifPanel(e){const rows=[{k:'相机',v:e.camera,hi:1},{k:'镜头',v:e.lens},{k:'快门',v:e.shutter,hi:1},{k:'光圈',v:e.aperture,hi:1},{k:'ISO',v:e.iso,hi:1},{k:'焦距',v:e.focal},{k:'日期',v:e.date},{k:'时间',v:e.time},{k:'GPS',v:e.gps}].filter(r=>r.v);const el=document.getElementById('exifPanel');if(!rows.length){el.innerHTML='<div class="exif-empty">未读取到 EXIF（JPEG 最佳）</div>';return;}el.innerHTML=rows.map(r=>'<div class="exif-item"><span class="ek">'+r.k+'</span><span class="ev'+(r.hi?' hi':'')+'">'+r.v+'</span></div>').join('');}
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+const PREVIEW_MAX = 3000; // 超出此尺寸的图片使用降采样版预览
 
-function render(){if(!S.img)return;const cv=document.getElementById('out-canvas'),ctx=cv.getContext('2d'),img=S.img,e=S.exif,th=THEMES[S.theme],f=S.fields,W=img.naturalWidth,H=img.naturalHeight,BASE=Math.max(W,H)*0.018*(S.fontSize/100),barR=S.barSize/100,pad2=Math.round(W*0.02);let TH=H,CW=W;if(S.style==='polaroid'){CW=W+pad2*2;TH=H+pad2+Math.round(H*barR)+pad2;}else if(S.style==='corner'){TH=H;}else{TH=H+Math.round(H*barR);}cv.width=CW;cv.height=TH;const ox=S.style==='polaroid'?pad2:0,oy=S.style==='polaroid'?pad2:0;if(S.style==='polaroid'){ctx.fillStyle=th.bg;ctx.fillRect(0,0,CW,TH);}ctx.drawImage(img,ox,oy,W,H);if(S.style==='film')drawFilm(ctx,W,H,TH,CW,th,e,f,BASE);if(S.style==='minimal')drawMinimal(ctx,W,H,TH,CW,th,e,f,BASE);if(S.style==='corner')drawCorner(ctx,W,H,CW,th,e,f,BASE);if(S.style==='polaroid')drawPolaroid(ctx,W,H,TH,CW,th,e,f,BASE,ox,oy);document.getElementById('cvEmpty').style.display='none';document.getElementById('cvWrap').style.display='block';if(isIOS)document.getElementById('iosHint').classList.add('show');}
+/* ══════════════════════════════════════════════════════
+   工具函数
+══════════════════════════════════════════════════════ */
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
 
-function F(B,w,s){return(w?w+' ':'')+B+'px \'DM Mono\',monospace';}
-function drawFilm(ctx,W,H,TH,CW,th,e,f,B){const bH=TH-H,bY=H,pad=W*0.03,cx=CW/2,mY=bY+bH/2;ctx.fillStyle=th.bg;ctx.fillRect(0,bY,CW,bH);ctx.fillStyle=th.accent;ctx.fillRect(0,bY,CW,1);if(f.camera&&e.camera){const ps=e.camera.split(' '),brand=ps[0],model=ps.slice(1).join(' ');ctx.textAlign='left';ctx.font='700 '+B*1.4+F(B);ctx.fillStyle=th.logo;ctx.fillText(brand.toUpperCase(),pad,mY-B*0.2);if(model){ctx.font='300 '+B*0.85+F(B);ctx.fillStyle=th.sub;ctx.fillText(model,pad,mY+B*1.1);}}if(f.params&&(e.shutter||e.aperture||e.iso)){const ps=[e.shutter,e.aperture,e.iso].filter(Boolean);ctx.textAlign='center';ctx.font='400 '+B*1.1+F(B);ctx.fillStyle=th.text;ctx.fillText(ps.join('   '),cx,mY+B*0.5);const pw=ps.map(p=>{ctx.font='400 '+B*1.1+F(B);return ctx.measureText(p).width;});const gw=ctx.measureText('   ').width;let x=cx-(pw.reduce((a,b)=>a+b,0)+gw*(ps.length-1))/2;const labs=[e.shutter?'SS':null,e.aperture?'APT':null,e.iso?'ISO':null].filter(Boolean);ctx.font='300 '+B*0.65+F(B);ctx.fillStyle=th.sub;labs.forEach((lb,i)=>{ctx.fillText(lb,x+pw[i]/2,mY-B*0.65);x+=pw[i]+gw;});if(f.focal&&e.focal){ctx.font='300 '+B*0.75+F(B);ctx.fillStyle=th.accent;ctx.textAlign='center';ctx.fillText(e.focal,cx,mY+B*1.65);}}ctx.textAlign='right';if(f.date&&(e.date||e.time)){if(e.date){ctx.font='400 '+B*0.85+F(B);ctx.fillStyle=th.text;ctx.fillText(e.date,CW-pad,mY-B*0.2);}if(e.time){ctx.font='300 '+B*0.75+F(B);ctx.fillStyle=th.sub;ctx.fillText(e.time,CW-pad,mY+B*1.1);}if(f.gps&&e.gps){ctx.font='300 '+B*0.6+F(B);ctx.fillStyle=th.sub;ctx.fillText('📍 '+e.gps,CW-pad,mY+B*2.1);}}else if(f.lens&&e.lens){ctx.font='300 '+B*0.8+F(B);ctx.fillStyle=th.sub;ctx.fillText(e.lens,CW-pad,mY+B*0.5);}ctx.strokeStyle=th.accent;ctx.lineWidth=0.5;ctx.globalAlpha=0.25;ctx.beginPath();ctx.moveTo(cx-W*0.18,bY+bH*0.2);ctx.lineTo(cx-W*0.18,bY+bH*0.8);ctx.stroke();ctx.beginPath();ctx.moveTo(cx+W*0.18,bY+bH*0.2);ctx.lineTo(cx+W*0.18,bY+bH*0.8);ctx.stroke();ctx.globalAlpha=1;}
+// 修复原版 F() 参数混乱 bug：统一用 fontStr(size, weight)
+const FONT_STACK = "'DM Mono',ui-monospace,'Cascadia Code','Source Code Pro',Menlo,Consolas,monospace";
+function fontStr(size, weight) {
+  return `${weight || 400} ${size}px ${FONT_STACK}`;
+}
 
-function drawMinimal(ctx,W,H,TH,CW,th,e,f,B){const bH=TH-H,bY=H,pad=W*0.04,vC=bY+bH/2;ctx.fillStyle=th.bg;ctx.fillRect(0,bY,CW,bH);ctx.fillStyle=th.accent;ctx.fillRect(0,bY,3,bH);ctx.textBaseline='middle';let xL=pad+12;if(f.camera&&e.camera){ctx.textAlign='left';ctx.font='500 '+B+F(B);ctx.fillStyle=th.text;ctx.fillText(e.camera,xL,vC);xL+=ctx.measureText(e.camera).width+B*2;}if(f.params){[e.shutter,e.aperture,e.iso].filter(Boolean).forEach((p,i,a)=>{ctx.font='300 '+B*0.9+F(B);ctx.fillStyle=th.sub;ctx.fillText(p,xL,vC);xL+=ctx.measureText(p).width;if(i<a.length-1){ctx.fillStyle=th.accent;ctx.fillText('  ·  ',xL,vC);xL+=ctx.measureText('  ·  ').width;}});}ctx.textAlign='right';let xR=CW-pad;if(f.date&&e.date){ctx.font='300 '+B*0.85+F(B);ctx.fillStyle=th.sub;const ds=(e.time?e.time+'  ':'')+e.date;ctx.fillText(ds,xR,vC);xR-=ctx.measureText(ds).width+B*2;}if(f.focal&&e.focal){ctx.font='400 '+B*0.9+F(B);ctx.fillStyle=th.accent;ctx.fillText(e.focal,xR,vC);}}
+function setOverlayTxt(html) {
+  document.getElementById('overlayTxt').innerHTML = html;
+}
 
-function drawCorner(ctx,W,H,CW,th,e,f,B){const pad=W*0.025,lH=B*1.5,lines=[];if(f.camera&&e.camera)lines.push({t:e.camera,s:B,c:th.text,bold:1});if(f.lens&&e.lens)lines.push({t:e.lens,s:B*0.8,c:th.sub});if(f.params){const p=[e.shutter,e.aperture,e.iso,f.focal?e.focal:null].filter(Boolean);if(p.length)lines.push({t:p.join('  '),s:B*0.85,c:th.accent});}if(f.date&&e.date)lines.push({t:e.date+(e.time?'  '+e.time:''),s:B*0.75,c:th.sub});if(!lines.length)return;const bkH=lines.length*lH+pad,bkW=Math.max(...lines.map(l=>{ctx.font=(l.bold?'500':'300')+' '+l.s+F(l.s);return ctx.measureText(l.t).width;}))+pad*2,bx=CW-bkW-pad,by=H-bkH-pad;ctx.fillStyle=th.bg;ctx.globalAlpha=0.88;ctx.fillRect(bx,by,bkW,bkH);ctx.globalAlpha=1;ctx.fillStyle=th.accent;ctx.fillRect(bx,by,2,bkH);lines.forEach((l,i)=>{ctx.font=(l.bold?'500':'300')+' '+l.s+F(l.s);ctx.fillStyle=l.c;ctx.textAlign='left';ctx.textBaseline='middle';ctx.fillText(l.t,bx+pad,by+pad/2+lH*(i+0.5));});}
+/* ══════════════════════════════════════════════════════
+   EXIF 解析（exifr：兼容 HEIC / GPS 浮点 / Date 对象）
+══════════════════════════════════════════════════════ */
+async function parseExif(file) {
+  try {
+    // 不传 pick，让 exifr 解析全部字段。
+    // 原先 pick 里混入了 'latitude'/'longitude'（exifr 计算字段，非原始 EXIF tag），
+    // 会导致 GPS 模块乃至整个解析被跳过，所有字段读不到。
+    const t = await exifr.parse(file) || {};
 
-function drawPolaroid(ctx,W,H,TH,CW,th,e,f,B,ox,oy){const bY=oy+H,bH2=TH-bY,cx=CW/2,vC=bY+bH2/2;ctx.textBaseline='middle';ctx.textAlign='center';if(f.camera&&e.camera){ctx.font='700 '+B*1.1+F(B);ctx.fillStyle=th.logo;ctx.fillText(e.camera.toUpperCase(),cx,vC-B*1.2);}if(f.params){const p=[e.shutter,e.aperture,e.iso,f.focal?e.focal:null].filter(Boolean);ctx.font='300 '+B*0.8+F(B);ctx.fillStyle=th.sub;ctx.fillText(p.join('   '),cx,vC+B*0.2);}if(f.date&&e.date){ctx.font='300 '+B*0.75+F(B);ctx.fillStyle=th.accent;ctx.fillText(e.date+(e.time?'  '+e.time:''),cx,vC+B*1.6);}ctx.fillStyle=th.accent;ctx.globalAlpha=0.45;ctx.fillRect(ox,bY,W,1);ctx.globalAlpha=1;}
+    const d = {};
 
-async function handleFile(file){document.getElementById('overlay').classList.add('show');S.filename=file.name.replace(/\.[^.]+$/,'');try{S.exif=await parseExif(file);renderExifPanel(S.exif);const url=URL.createObjectURL(file),img=new Image();img.onload=()=>{S.img=img;render();document.getElementById('exportBtn').disabled=false;document.getElementById('hdot').classList.add('ready');document.getElementById('uploadZone').classList.add('has-img');document.getElementById('uploadIco').textContent='✓';document.getElementById('uploadLbl').innerHTML='<span class="upload-fname">'+(file.name.length>28?file.name.slice(0,26)+'…':file.name)+'</span>';document.getElementById('uploadSub').textContent='点击重新选择';document.getElementById('cropEntryBtn').classList.add('show');document.getElementById('overlay').classList.remove('show');};img.onerror=()=>{document.getElementById('overlay').classList.remove('show');alert('图片加载失败');};img.src=url;}catch(err){document.getElementById('overlay').classList.remove('show');console.error(err);}}
+    // 相机型号：去除重复品牌前缀（大小写不敏感）
+    const make  = (t.Make  || '').trim();
+    const model = (t.Model || '').trim();
+    if (make && model) {
+      d.camera = model.toLowerCase().startsWith(make.toLowerCase()) ? model : `${make} ${model}`;
+    } else {
+      d.camera = make || model || '';
+    }
 
-function doExport(){const cv=document.getElementById('out-canvas'),dataUrl=cv.toDataURL('image/jpeg',S.quality/100);if(isIOS){const w=window.open('');if(w){const html='<html><head><meta name="viewport" content="width=device-width"><title>长按保存</title><style>body{margin:0;background:#000;display:flex;flex-direction:column;align-items:center}p{color:#888;font-size:13px;font-family:sans-serif;padding:18px;text-align:center}img{width:100%;display:block}</style></head><body><p>长按图片 → 存储到照片</p><img src="'+dataUrl+'"></body></html>';w.document.write(html);}}else{const a=document.createElement('a');a.download=S.filename+'_watermark.jpg';a.href=dataUrl;a.click();}}
+    d.lens = (t.LensModel || t.Lens || '').trim();
 
-const CROP={ratio:'free',scale:1,dW:0,dH:0,bx:0,by:0,bw:0,bh:0,drag:false,sx:0,sy:0,sbx:0,sby:0};
-function openCropModal(){if(!S.img)return;document.getElementById('cropModal').classList.add('open');requestAnimationFrame(()=>{const stage=document.getElementById('cropStage'),cv=document.getElementById('crop-canvas'),maxW=stage.clientWidth-32,maxH=stage.clientHeight-32,iw=S.img.naturalWidth,ih=S.img.naturalHeight,sc=Math.min(maxW/iw,maxH/ih,1);CROP.scale=sc;CROP.dW=Math.round(iw*sc);CROP.dH=Math.round(ih*sc);cv.width=CROP.dW;cv.height=CROP.dH;cv.style.width=CROP.dW+'px';cv.style.height=CROP.dH+'px';cv.getContext('2d').drawImage(S.img,0,0,CROP.dW,CROP.dH);CROP.ratio='free';document.querySelectorAll('.ratio-btn').forEach(b=>b.classList.toggle('on',b.dataset.ratio==='free'));resetCropBox();drawCropOverlay();});}
-function resetCropBox(){CROP.bx=0;CROP.by=0;CROP.bw=CROP.dW;CROP.bh=CROP.dH;applyRatio();}
-function applyRatio(){if(CROP.ratio==='free'){CROP.bx=0;CROP.by=0;CROP.bw=CROP.dW;CROP.bh=CROP.dH;return;}const[rw,rh]=CROP.ratio.split(':').map(Number);let bw=CROP.dW,bh=Math.round(bw*rh/rw);if(bh>CROP.dH){bh=CROP.dH;bw=Math.round(bh*rw/rh);}CROP.bx=Math.round((CROP.dW-bw)/2);CROP.by=Math.round((CROP.dH-bh)/2);CROP.bw=bw;CROP.bh=bh;}
-function clampBox(){CROP.bw=Math.max(40,Math.min(CROP.bw,CROP.dW));CROP.bh=Math.max(40,Math.min(CROP.bh,CROP.dH));CROP.bx=Math.max(0,Math.min(CROP.bx,CROP.dW-CROP.bw));CROP.by=Math.max(0,Math.min(CROP.by,CROP.dH-CROP.bh));}
-function drawCropOverlay(){const cv=document.getElementById('crop-canvas'),ctx=cv.getContext('2d');ctx.drawImage(S.img,0,0,CROP.dW,CROP.dH);ctx.fillStyle='rgba(0,0,0,.52)';ctx.fillRect(0,0,CROP.dW,CROP.dH);ctx.clearRect(CROP.bx,CROP.by,CROP.bw,CROP.bh);ctx.drawImage(S.img,Math.round(CROP.bx/CROP.scale),Math.round(CROP.by/CROP.scale),Math.round(CROP.bw/CROP.scale),Math.round(CROP.bh/CROP.scale),CROP.bx,CROP.by,CROP.bw,CROP.bh);ctx.strokeStyle='#c8a96e';ctx.lineWidth=2;ctx.strokeRect(CROP.bx,CROP.by,CROP.bw,CROP.bh);ctx.strokeStyle='rgba(255,255,255,.22)';ctx.lineWidth=0.8;for(let i=1;i<3;i++){const gx=CROP.bx+CROP.bw*i/3,gy=CROP.by+CROP.bh*i/3;ctx.beginPath();ctx.moveTo(gx,CROP.by);ctx.lineTo(gx,CROP.by+CROP.bh);ctx.stroke();ctx.beginPath();ctx.moveTo(CROP.bx,gy);ctx.lineTo(CROP.bx+CROP.bw,gy);ctx.stroke();}ctx.strokeStyle='#c8a96e';ctx.lineWidth=3;const cs=14;[[CROP.bx,CROP.by,1,1],[CROP.bx+CROP.bw,CROP.by,-1,1],[CROP.bx,CROP.by+CROP.bh,1,-1],[CROP.bx+CROP.bw,CROP.by+CROP.bh,-1,-1]].forEach(([x,y,dx,dy])=>{ctx.beginPath();ctx.moveTo(x+dx*cs,y);ctx.lineTo(x,y);ctx.lineTo(x,y+dy*cs);ctx.stroke();});}
-function getXY(e){const cv=document.getElementById('crop-canvas'),rect=cv.getBoundingClientRect(),src=e.touches?e.touches[0]:e;return{x:src.clientX-rect.left,y:src.clientY-rect.top};}
-function cropDown(e){const{x,y}=getXY(e);if(x<CROP.bx||x>CROP.bx+CROP.bw||y<CROP.by||y>CROP.by+CROP.bh)return;e.preventDefault();CROP.drag=true;CROP.sx=x;CROP.sy=y;CROP.sbx=CROP.bx;CROP.sby=CROP.by;}
-function cropMove(e){if(!CROP.drag)return;e.preventDefault();const{x,y}=getXY(e);CROP.bx=CROP.sbx+(x-CROP.sx);CROP.by=CROP.sby+(y-CROP.sy);clampBox();drawCropOverlay();}
-function cropUp(){CROP.drag=false;}
-function confirmCrop(){const sc=CROP.scale,sx=Math.round(CROP.bx/sc),sy=Math.round(CROP.by/sc),sw=Math.round(CROP.bw/sc),sh=Math.round(CROP.bh/sc),tmp=document.createElement('canvas');tmp.width=sw;tmp.height=sh;tmp.getContext('2d').drawImage(S.img,sx,sy,sw,sh,0,0,sw,sh);const ni=new Image();ni.onload=()=>{S.img=ni;render();document.getElementById('cropModal').classList.remove('open');};ni.src=tmp.toDataURL('image/jpeg',0.98);}
+    // 快门速度
+    if (t.ExposureTime) {
+      const et = t.ExposureTime;
+      d.shutter = et >= 1 ? `${et}s` : `1/${Math.round(1 / et)}s`;
+    }
 
-const cropCv=document.getElementById('crop-canvas');
-cropCv.addEventListener('mousedown',cropDown);
-cropCv.addEventListener('touchstart',cropDown,{passive:false});
-cropCv.addEventListener('mousemove',cropMove);
-cropCv.addEventListener('touchmove',cropMove,{passive:false});
-cropCv.addEventListener('mouseup',cropUp);
-cropCv.addEventListener('touchend',cropUp);
-document.getElementById('cropEntryBtn').addEventListener('click',openCropModal);
-document.getElementById('cropClose').addEventListener('click',()=>document.getElementById('cropModal').classList.remove('open'));
-document.getElementById('cropConfirm').addEventListener('click',confirmCrop);
-document.getElementById('cropReset').addEventListener('click',()=>{CROP.ratio='free';document.querySelectorAll('.ratio-btn').forEach(b=>b.classList.toggle('on',b.dataset.ratio==='free'));resetCropBox();drawCropOverlay();});
-document.querySelectorAll('.ratio-btn').forEach(btn=>{btn.addEventListener('click',()=>{document.querySelectorAll('.ratio-btn').forEach(b=>b.classList.remove('on'));btn.classList.add('on');CROP.ratio=btn.dataset.ratio;applyRatio();drawCropOverlay();});});
+    // 光圈：去掉多余 .0（f/2 而非 f/2.0）
+    if (t.FNumber) {
+      d.aperture = `f/${Number(t.FNumber).toFixed(1).replace(/\.0$/, '')}`;
+    }
 
-const fi=document.getElementById('fileInput');
-document.getElementById('uploadZone').addEventListener('click',()=>fi.click());
-fi.addEventListener('change',()=>{if(fi.files[0])handleFile(fi.files[0]);});
-const uz=document.getElementById('uploadZone');
-uz.addEventListener('dragover',e=>{e.preventDefault();uz.style.borderColor='var(--accent)';});
-uz.addEventListener('dragleave',()=>{uz.style.borderColor='';});
-uz.addEventListener('drop',e=>{e.preventDefault();uz.style.borderColor='';if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
-document.querySelectorAll('.style-btn').forEach(b=>{b.addEventListener('click',()=>{document.querySelectorAll('.style-btn').forEach(x=>x.classList.remove('on'));b.classList.add('on');S.style=b.dataset.s;render();});});
-document.querySelectorAll('.dot').forEach(d=>{d.addEventListener('click',()=>{document.querySelectorAll('.dot').forEach(x=>x.classList.remove('on'));d.classList.add('on');S.theme=d.dataset.t;render();});});
-document.querySelectorAll('.tog-row').forEach(row=>{row.addEventListener('click',()=>{const f=row.dataset.f;S.fields[f]=!S.fields[f];row.querySelector('.tog-sw').classList.toggle('on',S.fields[f]);render();});});
-[['sBarSize','vBarSize','barSize'],['sFontSize','vFontSize','fontSize'],['sQuality','vQuality','quality']].forEach(([sid,vid,key])=>{document.getElementById(sid).addEventListener('input',function(){S[key]=parseInt(this.value);document.getElementById(vid).textContent=this.value+'%';render();});});
-document.getElementById('exportBtn').addEventListener('click',doExport);
+    // ISO（exifr 输出字段名为 ISO）
+    if (t.ISO) d.iso = `ISO ${t.ISO}`;
+
+    // 焦距
+    if (t.FocalLength) d.focal = `${t.FocalLength}mm`;
+
+    // 日期时间：exifr 直接返回 Date 对象
+    if (t.DateTimeOriginal instanceof Date && !isNaN(t.DateTimeOriginal)) {
+      const dt = t.DateTimeOriginal;
+      d.date = `${dt.getFullYear()}/${String(dt.getMonth()+1).padStart(2,'0')}/${String(dt.getDate()).padStart(2,'0')}`;
+      d.time = `${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    }
+
+    // GPS：exifr 已自动将度分秒换算为 latitude/longitude 浮点数，直接使用
+    if (t.latitude != null && t.longitude != null) {
+      const lat = t.latitude, lon = t.longitude;
+      d.gps = `${Math.abs(lat).toFixed(4)}°${lat>=0?'N':'S'} ${Math.abs(lon).toFixed(4)}°${lon>=0?'E':'W'}`;
+    }
+
+    return d;
+  } catch (err) {
+    console.warn('EXIF 读取失败:', err);
+    return {};
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   EXIF 面板渲染
+══════════════════════════════════════════════════════ */
+function renderExifPanel(exif, fileExt) {
+  const rows = [
+    { k:'相机', v:exif.camera, hi:1 }, { k:'镜头', v:exif.lens },
+    { k:'快门', v:exif.shutter, hi:1 }, { k:'光圈', v:exif.aperture, hi:1 },
+    { k:'ISO',  v:exif.iso, hi:1 },    { k:'焦距', v:exif.focal },
+    { k:'日期', v:exif.date },         { k:'时间', v:exif.time },
+    { k:'GPS',  v:exif.gps }
+  ].filter(r => r.v);
+
+  const el = document.getElementById('exifPanel');
+  const isJpeg = /jpe?g/i.test(fileExt || '');
+  const warn = (!isJpeg && !rows.length)
+    ? `<div class="exif-warn">⚠ ${fileExt} 格式可能不含 EXIF，建议使用原始 JPG 文件以获得最佳效果。</div>`
+    : '';
+
+  el.innerHTML = warn + (rows.length
+    ? rows.map(r => `<div class="exif-item"><span class="ek">${r.k}</span><span class="ev${r.hi?' hi':''}">${r.v}</span></div>`).join('')
+    : '<div class="exif-empty">未读取到 EXIF 信息</div>');
+}
+
+/* ══════════════════════════════════════════════════════
+   主渲染函数（防抖 60ms）
+══════════════════════════════════════════════════════ */
+function _render() {
+  if (!S.img) return;
+  const cv  = document.getElementById('out-canvas');
+  const ctx = cv.getContext('2d');
+  const img = S.img;
+  const e   = S.exif, th = THEMES[S.theme], f = S.fields;
+  const W   = img.naturalWidth, H = img.naturalHeight;
+  const B   = Math.max(W, H) * 0.018 * (S.fontSize / 100);
+  const barR = S.barSize / 100;
+  const pad2 = Math.round(W * 0.02);
+
+  let CW = W, TH = H;
+  if      (S.style === 'polaroid') { CW = W + pad2*2; TH = H + pad2 + Math.round(H*barR) + pad2; }
+  else if (S.style === 'corner')   { TH = H; }
+  else                             { TH = H + Math.round(H*barR); }
+
+  // 重设尺寸会重置整个 ctx 状态（包括 textBaseline、globalAlpha 等）
+  cv.width = CW; cv.height = TH;
+
+  const ox = S.style === 'polaroid' ? pad2 : 0;
+  const oy = S.style === 'polaroid' ? pad2 : 0;
+
+  if (S.style === 'polaroid') { ctx.fillStyle = th.bg; ctx.fillRect(0,0,CW,TH); }
+  ctx.drawImage(img, ox, oy, W, H);
+
+  if (S.style === 'film')     drawFilm(ctx, W, H, TH, CW, th, e, f, B);
+  if (S.style === 'minimal')  drawMinimal(ctx, W, H, TH, CW, th, e, f, B);
+  if (S.style === 'corner')   drawCorner(ctx, W, H, CW, th, e, f, B);
+  if (S.style === 'polaroid') drawPolaroid(ctx, W, H, TH, CW, th, e, f, B, ox, oy);
+
+  document.getElementById('cvEmpty').style.display = 'none';
+  document.getElementById('cvWrap').style.display  = 'block';
+  if (isIOS) document.getElementById('iosHint').classList.add('show');
+}
+const render = debounce(_render, 60);
+
+/* ══════════════════════════════════════════════════════
+   绘制：胶片边框
+══════════════════════════════════════════════════════ */
+function drawFilm(ctx, W, H, TH, CW, th, e, f, B) {
+  const bH = TH-H, bY = H, pad = W*0.03, cx = CW/2, mY = bY+bH/2;
+  ctx.fillStyle = th.bg;   ctx.fillRect(0, bY, CW, bH);
+  ctx.fillStyle = th.accent; ctx.fillRect(0, bY, CW, 1);
+
+  // 左：品牌 + 型号
+  if (f.camera && e.camera) {
+    const parts = e.camera.split(' ');
+    const brand = parts[0], model = parts.slice(1).join(' ');
+    ctx.textAlign = 'left';
+    ctx.font = fontStr(B*1.4, 700); ctx.fillStyle = th.logo;
+    ctx.fillText(brand.toUpperCase(), pad, mY-B*0.2);
+    if (model) { ctx.font = fontStr(B*0.85, 300); ctx.fillStyle = th.sub; ctx.fillText(model, pad, mY+B*1.1); }
+  }
+
+  // 中：SS / 光圈 / ISO + 焦距
+  if (f.params && (e.shutter || e.aperture || e.iso)) {
+    const ps   = [e.shutter, e.aperture, e.iso].filter(Boolean);
+    const labs = [e.shutter?'SS':null, e.aperture?'APT':null, e.iso?'ISO':null].filter(Boolean);
+    ctx.font = fontStr(B*1.1, 400);
+    const sepW = ctx.measureText('   ').width;
+    const pWs  = ps.map(p => { ctx.font = fontStr(B*1.1,400); return ctx.measureText(p).width; });
+    const totalW = pWs.reduce((a,b)=>a+b,0) + sepW*(ps.length-1);
+    let x = cx - totalW/2;
+    ctx.textAlign = 'left';
+    ps.forEach((p, i) => {
+      ctx.font = fontStr(B*0.65, 300); ctx.fillStyle = th.sub;
+      ctx.fillText(labs[i], x + pWs[i]/2 - ctx.measureText(labs[i]).width/2, mY-B*0.65);
+      ctx.font = fontStr(B*1.1, 400); ctx.fillStyle = th.text;
+      ctx.fillText(p, x, mY+B*0.5);
+      x += pWs[i] + sepW;
+    });
+    if (f.focal && e.focal) {
+      ctx.font = fontStr(B*0.75, 300); ctx.fillStyle = th.accent;
+      ctx.textAlign = 'center'; ctx.fillText(e.focal, cx, mY+B*1.65);
+    }
+  }
+
+  // 右：日期时间 或 镜头
+  ctx.textAlign = 'right';
+  if (f.date && (e.date || e.time)) {
+    if (e.date) { ctx.font = fontStr(B*0.85,400); ctx.fillStyle=th.text; ctx.fillText(e.date, CW-pad, mY-B*0.2); }
+    if (e.time) { ctx.font = fontStr(B*0.75,300); ctx.fillStyle=th.sub;  ctx.fillText(e.time, CW-pad, mY+B*1.1); }
+    if (f.gps && e.gps) { ctx.font=fontStr(B*0.6,300); ctx.fillStyle=th.sub; ctx.fillText('📍 '+e.gps, CW-pad, mY+B*2.1); }
+  } else if (f.lens && e.lens) {
+    ctx.font = fontStr(B*0.8,300); ctx.fillStyle=th.sub; ctx.fillText(e.lens, CW-pad, mY+B*0.5);
+  }
+
+  // 装饰竖线
+  ctx.strokeStyle = th.accent; ctx.lineWidth = 0.5; ctx.globalAlpha = 0.25;
+  [cx-W*0.18, cx+W*0.18].forEach(lx => {
+    ctx.beginPath(); ctx.moveTo(lx, bY+bH*0.2); ctx.lineTo(lx, bY+bH*0.8); ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+}
+
+/* ══════════════════════════════════════════════════════
+   绘制：简约底栏
+══════════════════════════════════════════════════════ */
+function drawMinimal(ctx, W, H, TH, CW, th, e, f, B) {
+  const bH = TH-H, bY = H, pad = W*0.04, vC = bY+bH/2;
+  ctx.fillStyle = th.bg; ctx.fillRect(0, bY, CW, bH);
+  ctx.fillStyle = th.accent; ctx.fillRect(0, bY, 3, bH);
+  ctx.textBaseline = 'middle';
+  let xL = pad+12;
+  if (f.camera && e.camera) {
+    ctx.textAlign='left'; ctx.font=fontStr(B,500); ctx.fillStyle=th.text;
+    ctx.fillText(e.camera, xL, vC); xL += ctx.measureText(e.camera).width + B*2;
+  }
+  if (f.params) {
+    [e.shutter,e.aperture,e.iso].filter(Boolean).forEach((p,i,arr) => {
+      ctx.font=fontStr(B*0.9,300); ctx.fillStyle=th.sub; ctx.fillText(p,xL,vC); xL+=ctx.measureText(p).width;
+      if (i<arr.length-1) { ctx.fillStyle=th.accent; ctx.fillText('  ·  ',xL,vC); xL+=ctx.measureText('  ·  ').width; }
+    });
+  }
+  ctx.textAlign = 'right'; let xR = CW-pad;
+  if (f.date && e.date) {
+    ctx.font=fontStr(B*0.85,300); ctx.fillStyle=th.sub;
+    const ds=(e.time?e.time+'  ':'')+e.date; ctx.fillText(ds,xR,vC); xR-=ctx.measureText(ds).width+B*2;
+  }
+  if (f.focal && e.focal) { ctx.font=fontStr(B*0.9,400); ctx.fillStyle=th.accent; ctx.fillText(e.focal,xR,vC); }
+}
+
+/* ══════════════════════════════════════════════════════
+   绘制：角落印记
+══════════════════════════════════════════════════════ */
+function drawCorner(ctx, W, H, CW, th, e, f, B) {
+  const pad = W*0.025, lH = B*1.5, lines = [];
+  if (f.camera && e.camera) lines.push({ t:e.camera,                             s:B,       c:th.text,   bold:1 });
+  if (f.lens   && e.lens)   lines.push({ t:e.lens,                               s:B*0.8,   c:th.sub });
+  if (f.params) { const p=[e.shutter,e.aperture,e.iso,f.focal?e.focal:null].filter(Boolean); if(p.length) lines.push({t:p.join('  '),s:B*0.85,c:th.accent}); }
+  if (f.date && e.date)     lines.push({ t:e.date+(e.time?'  '+e.time:''),        s:B*0.75,  c:th.sub });
+  if (!lines.length) return;
+
+  const maxTW = Math.max(...lines.map(l => { ctx.font=fontStr(l.s,l.bold?500:300); return ctx.measureText(l.t).width; }));
+  const bkW=maxTW+pad*2, bkH=lines.length*lH+pad, bx=CW-bkW-pad, by=H-bkH-pad;
+  ctx.fillStyle=th.bg; ctx.globalAlpha=0.88; ctx.fillRect(bx,by,bkW,bkH); ctx.globalAlpha=1;
+  ctx.fillStyle=th.accent; ctx.fillRect(bx,by,2,bkH);
+  lines.forEach((l,i) => {
+    ctx.font=fontStr(l.s,l.bold?500:300); ctx.fillStyle=l.c;
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(l.t, bx+pad, by+pad/2+lH*(i+0.5));
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   绘制：拍立得
+   修复：动态收集行数后统一垂直居中，字段关闭时不偏位
+══════════════════════════════════════════════════════ */
+function drawPolaroid(ctx, W, H, TH, CW, th, e, f, B, ox, oy) {
+  const bY = oy+H, bH2 = TH-bY, cx = CW/2;
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+
+  const lines = [];
+  if (f.camera && e.camera)
+    lines.push({ text:e.camera.toUpperCase(), size:B*1.1, weight:700, color:th.logo });
+  if (f.params) {
+    const p=[e.shutter,e.aperture,e.iso,f.focal?e.focal:null].filter(Boolean);
+    if (p.length) lines.push({ text:p.join('   '), size:B*0.8, weight:300, color:th.sub });
+  }
+  if (f.date && e.date)
+    lines.push({ text:e.date+(e.time?'  '+e.time:''), size:B*0.75, weight:300, color:th.accent });
+
+  if (lines.length > 0) {
+    const lineH = B*1.5, totalH = lines.length*lineH;
+    const startY = bY + (bH2-totalH)/2 + lineH/2;
+    lines.forEach((ln, i) => {
+      ctx.font=fontStr(ln.size, ln.weight); ctx.fillStyle=ln.color;
+      ctx.fillText(ln.text, cx, startY+i*lineH);
+    });
+  }
+
+  ctx.fillStyle=th.accent; ctx.globalAlpha=0.45; ctx.fillRect(ox, bY, W, 1); ctx.globalAlpha=1;
+}
+
+/* ══════════════════════════════════════════════════════
+   文件处理（HEIC 转换 + 大图保护 + revokeObjectURL）
+══════════════════════════════════════════════════════ */
+async function handleFile(file) {
+  document.getElementById('overlay').classList.add('show');
+  setOverlayTxt('读取 EXIF · 渲染中…');
+  S.filename = file.name.replace(/\.[^.]+$/, '');
+  const fileExt = file.name.split('.').pop().toUpperCase();
+
+  try {
+    // 1. 先读 EXIF（转换前读，原始文件信息最完整）
+    S.exif = await parseExif(file);
+    renderExifPanel(S.exif, fileExt);
+
+    // 2. HEIC → JPEG（canvas 无法直接渲染 HEIC）
+    let renderFile = file;
+    const isHeic = /heic|heif/i.test(fileExt) || file.type === 'image/heic' || file.type === 'image/heif';
+    if (isHeic && typeof heic2any !== 'undefined') {
+      setOverlayTxt('正在转换 HEIC 格式…<br><span style="font-size:10px;opacity:.6">可能需要几秒钟</span>');
+      const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.95 });
+      renderFile = Array.isArray(converted) ? converted[0] : converted;
+    }
+
+    // 3. 加载图像
+    const url = URL.createObjectURL(renderFile);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(url); // 立即释放，避免内存泄漏
+      S.origImg = img;          // 保存原图供导出使用
+
+      // 大图降采样预览（导出时仍用原图）
+      if (img.naturalWidth > PREVIEW_MAX || img.naturalHeight > PREVIEW_MAX) {
+        const sc  = PREVIEW_MAX / Math.max(img.naturalWidth, img.naturalHeight);
+        const tmp = document.createElement('canvas');
+        tmp.width  = Math.round(img.naturalWidth  * sc);
+        tmp.height = Math.round(img.naturalHeight * sc);
+        tmp.getContext('2d').drawImage(img, 0, 0, tmp.width, tmp.height);
+        const preview = new Image();
+        preview.onload = () => { S.img = preview; _render(); afterLoad(file); };
+        preview.src = tmp.toDataURL('image/jpeg', 0.92);
+      } else {
+        S.img = img;
+        _render();
+        afterLoad(file);
+      }
+    };
+
+    img.onerror = () => {
+      document.getElementById('overlay').classList.remove('show');
+      alert('图片加载失败，请尝试其他格式');
+    };
+    img.src = url;
+
+  } catch (err) {
+    document.getElementById('overlay').classList.remove('show');
+    console.error('文件处理失败:', err);
+    alert('处理失败，请检查文件格式');
+  }
+}
+
+function afterLoad(file) {
+  document.getElementById('exportBtn').disabled = false;
+  document.getElementById('hdot').classList.add('ready');
+  document.getElementById('uploadZone').classList.add('has-img');
+  document.getElementById('uploadIco').textContent = '✓';
+  document.getElementById('uploadLbl').innerHTML =
+    `<span class="upload-fname">${file.name.length>28 ? file.name.slice(0,26)+'…' : file.name}</span>`;
+  document.getElementById('uploadSub').textContent = '点击重新选择';
+  document.getElementById('cropEntryBtn').classList.add('show');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+/* ══════════════════════════════════════════════════════
+   导出（原图全分辨率 + iOS 兼容）
+══════════════════════════════════════════════════════ */
+function doExport() {
+  const exportImg = S.origImg || S.img;
+  if (!exportImg) return;
+
+  // 临时换为原图渲染，同步取 dataUrl，再还原预览图
+  const prevImg = S.img;
+  S.img = exportImg;
+  _render(); // 同步，不走防抖
+
+  const dataUrl = document.getElementById('out-canvas').toDataURL('image/jpeg', S.quality/100);
+
+  S.img = prevImg;
+  _render(); // 恢复预览
+
+  const a = document.createElement('a');
+  a.download = S.filename + '_watermark.jpg';
+  a.href = dataUrl;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  if (isIOS) document.getElementById('iosHint').classList.add('show');
+}
+
+/* ══════════════════════════════════════════════════════
+   裁切（移动 + 四角缩放 + 比例锁定等比 + 鼠标指针）
+══════════════════════════════════════════════════════ */
+const CROP = {
+  ratio:'free', scale:1, dW:0, dH:0, bx:0, by:0, bw:0, bh:0,
+  mode:null, sx:0, sy:0, sbx:0, sby:0, sbw:0, sbh:0
+};
+const HIT = 22; // 角落热区半径
+
+function openCropModal() {
+  if (!S.img) return;
+  document.getElementById('cropModal').classList.add('open');
+  requestAnimationFrame(() => {
+    const stage = document.getElementById('cropStage');
+    const cv    = document.getElementById('crop-canvas');
+    const sc    = Math.min((stage.clientWidth-32)/S.img.naturalWidth, (stage.clientHeight-32)/S.img.naturalHeight, 1);
+    CROP.scale=sc; CROP.dW=Math.round(S.img.naturalWidth*sc); CROP.dH=Math.round(S.img.naturalHeight*sc);
+    cv.width=CROP.dW; cv.height=CROP.dH; cv.style.width=CROP.dW+'px'; cv.style.height=CROP.dH+'px';
+    CROP.ratio='free';
+    document.querySelectorAll('.ratio-btn').forEach(b => b.classList.toggle('on', b.dataset.ratio==='free'));
+    resetCropBox(); drawCropOverlay();
+  });
+}
+
+function resetCropBox() { CROP.bx=0; CROP.by=0; CROP.bw=CROP.dW; CROP.bh=CROP.dH; applyRatio(); }
+
+function applyRatio() {
+  if (CROP.ratio==='free') { CROP.bx=0; CROP.by=0; CROP.bw=CROP.dW; CROP.bh=CROP.dH; return; }
+  const [rw,rh]=CROP.ratio.split(':').map(Number);
+  let bw=CROP.dW, bh=Math.round(bw*rh/rw);
+  if (bh>CROP.dH) { bh=CROP.dH; bw=Math.round(bh*rw/rh); }
+  CROP.bx=Math.round((CROP.dW-bw)/2); CROP.by=Math.round((CROP.dH-bh)/2); CROP.bw=bw; CROP.bh=bh;
+}
+
+function clampBox() {
+  CROP.bw=Math.max(40,Math.min(CROP.bw,CROP.dW)); CROP.bh=Math.max(40,Math.min(CROP.bh,CROP.dH));
+  CROP.bx=Math.max(0,Math.min(CROP.bx,CROP.dW-CROP.bw)); CROP.by=Math.max(0,Math.min(CROP.by,CROP.dH-CROP.bh));
+}
+
+function drawCropOverlay() {
+  const cv=document.getElementById('crop-canvas'), ctx=cv.getContext('2d');
+  ctx.drawImage(S.img,0,0,CROP.dW,CROP.dH);
+  ctx.fillStyle='rgba(0,0,0,.52)'; ctx.fillRect(0,0,CROP.dW,CROP.dH);
+  ctx.clearRect(CROP.bx,CROP.by,CROP.bw,CROP.bh);
+  ctx.drawImage(S.img, Math.round(CROP.bx/CROP.scale),Math.round(CROP.by/CROP.scale),
+    Math.round(CROP.bw/CROP.scale),Math.round(CROP.bh/CROP.scale), CROP.bx,CROP.by,CROP.bw,CROP.bh);
+  ctx.strokeStyle='#c8a96e'; ctx.lineWidth=2; ctx.strokeRect(CROP.bx,CROP.by,CROP.bw,CROP.bh);
+  ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=0.8;
+  for(let i=1;i<3;i++){
+    const gx=CROP.bx+CROP.bw*i/3, gy=CROP.by+CROP.bh*i/3;
+    ctx.beginPath();ctx.moveTo(gx,CROP.by);ctx.lineTo(gx,CROP.by+CROP.bh);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(CROP.bx,gy);ctx.lineTo(CROP.bx+CROP.bw,gy);ctx.stroke();
+  }
+  const cs=16; ctx.strokeStyle='#c8a96e'; ctx.lineWidth=3;
+  [[CROP.bx,CROP.by,1,1],[CROP.bx+CROP.bw,CROP.by,-1,1],
+   [CROP.bx,CROP.by+CROP.bh,1,-1],[CROP.bx+CROP.bw,CROP.by+CROP.bh,-1,-1]
+  ].forEach(([x,y,dx,dy])=>{ ctx.beginPath();ctx.moveTo(x+dx*cs,y);ctx.lineTo(x,y);ctx.lineTo(x,y+dy*cs);ctx.stroke(); });
+}
+
+function getHitMode(x,y) {
+  const {bx,by,bw,bh}=CROP;
+  if(Math.abs(x-bx)<HIT    && Math.abs(y-by)<HIT)    return 'tl';
+  if(Math.abs(x-bx-bw)<HIT && Math.abs(y-by)<HIT)    return 'tr';
+  if(Math.abs(x-bx)<HIT    && Math.abs(y-by-bh)<HIT) return 'bl';
+  if(Math.abs(x-bx-bw)<HIT && Math.abs(y-by-bh)<HIT) return 'br';
+  if(x>bx&&x<bx+bw&&y>by&&y<by+bh) return 'move';
+  return null;
+}
+
+function getCropXY(e) {
+  const rect=document.getElementById('crop-canvas').getBoundingClientRect();
+  const src=e.touches?e.touches[0]:e;
+  return {x:src.clientX-rect.left, y:src.clientY-rect.top};
+}
+
+function cropDown(e) {
+  const {x,y}=getCropXY(e), mode=getHitMode(x,y);
+  if(!mode) return;
+  e.preventDefault();
+  CROP.mode=mode; CROP.sx=x; CROP.sy=y;
+  CROP.sbx=CROP.bx; CROP.sby=CROP.by; CROP.sbw=CROP.bw; CROP.sbh=CROP.bh;
+}
+
+function cropMove(e) {
+  const {x,y}=getCropXY(e);
+  if (!CROP.mode) {
+    // 仅更新鼠标指针
+    const cv=document.getElementById('crop-canvas'), m=getHitMode(x,y);
+    cv.style.cursor = !m?'default': m==='move'?'move': (m==='tl'||m==='br')?'nwse-resize':'nesw-resize';
+    return;
+  }
+  e.preventDefault();
+  const dx=x-CROP.sx, dy=y-CROP.sy;
+  if (CROP.mode==='move') {
+    CROP.bx=CROP.sbx+dx; CROP.by=CROP.sby+dy;
+  } else {
+    let nx=CROP.sbx, ny=CROP.sby, nw=CROP.sbw, nh=CROP.sbh;
+    if(CROP.mode.includes('l')){ nx+=dx; nw-=dx; }
+    if(CROP.mode.includes('r')){ nw+=dx; }
+    if(CROP.mode.includes('t')){ ny+=dy; nh-=dy; }
+    if(CROP.mode.includes('b')){ nh+=dy; }
+    // 比例锁定等比缩放（来自同事版）
+    if (CROP.ratio!=='free') {
+      const [rw,rh]=CROP.ratio.split(':').map(Number), ar=rw/rh;
+      if (Math.abs(dx)>=Math.abs(dy)) { nh=Math.round(nw/ar); if(CROP.mode.includes('t')) ny=CROP.sby+(CROP.sbh-nh); }
+      else                            { nw=Math.round(nh*ar); if(CROP.mode.includes('l')) nx=CROP.sbx+(CROP.sbw-nw); }
+    }
+    if (nw>40&&nh>40) { CROP.bx=nx; CROP.by=ny; CROP.bw=nw; CROP.bh=nh; }
+  }
+  clampBox(); drawCropOverlay();
+}
+
+function cropUp() { CROP.mode=null; }
+
+function confirmCrop() {
+  const sc=CROP.scale;
+  const tmp=document.createElement('canvas');
+  tmp.width=Math.round(CROP.bw/sc); tmp.height=Math.round(CROP.bh/sc);
+  tmp.getContext('2d').drawImage(S.img, Math.round(CROP.bx/sc),Math.round(CROP.by/sc),tmp.width,tmp.height, 0,0,tmp.width,tmp.height);
+  const ni=new Image();
+  ni.onload=()=>{ S.img=ni; S.origImg=ni; _render(); document.getElementById('cropModal').classList.remove('open'); };
+  ni.src=tmp.toDataURL('image/jpeg',0.98);
+}
+
+/* ══════════════════════════════════════════════════════
+   事件绑定
+══════════════════════════════════════════════════════ */
+const cropCv = document.getElementById('crop-canvas');
+cropCv.addEventListener('mousedown',  cropDown);
+cropCv.addEventListener('touchstart', cropDown,  {passive:false});
+cropCv.addEventListener('mousemove',  cropMove);
+cropCv.addEventListener('touchmove',  cropMove,  {passive:false});
+cropCv.addEventListener('mouseup',    cropUp);
+cropCv.addEventListener('touchend',   cropUp);
+cropCv.addEventListener('mouseleave', cropUp);
+
+document.getElementById('cropEntryBtn').addEventListener('click', openCropModal);
+document.getElementById('cropClose').addEventListener('click', ()=>document.getElementById('cropModal').classList.remove('open'));
+document.getElementById('cropConfirm').addEventListener('click', confirmCrop);
+document.getElementById('cropReset').addEventListener('click', ()=>{
+  CROP.ratio='free';
+  document.querySelectorAll('.ratio-btn').forEach(b=>b.classList.toggle('on',b.dataset.ratio==='free'));
+  resetCropBox(); drawCropOverlay();
+});
+document.querySelectorAll('.ratio-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.ratio-btn').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on'); CROP.ratio=btn.dataset.ratio; applyRatio(); drawCropOverlay();
+  });
+});
+
+const fi = document.getElementById('fileInput');
+document.getElementById('uploadZone').addEventListener('click', ()=>fi.click());
+document.getElementById('changeBtn').addEventListener('click',  ()=>fi.click());
+fi.addEventListener('change', ()=>{ if(fi.files[0]) handleFile(fi.files[0]); });
+
+const uz = document.getElementById('uploadZone');
+uz.addEventListener('dragover',  e=>{e.preventDefault();uz.style.borderColor='var(--accent)';});
+uz.addEventListener('dragleave', ()=>{uz.style.borderColor='';});
+uz.addEventListener('drop', e=>{e.preventDefault();uz.style.borderColor='';if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
+
+document.querySelectorAll('.style-btn').forEach(b=>{
+  b.addEventListener('click',()=>{ document.querySelectorAll('.style-btn').forEach(x=>x.classList.remove('on')); b.classList.add('on'); S.style=b.dataset.s; render(); });
+});
+document.querySelectorAll('.dot').forEach(d=>{
+  d.addEventListener('click',()=>{ document.querySelectorAll('.dot').forEach(x=>x.classList.remove('on')); d.classList.add('on'); S.theme=d.dataset.t; render(); });
+});
+document.querySelectorAll('.tog-row').forEach(row=>{
+  row.addEventListener('click',()=>{ const fd=row.dataset.f; S.fields[fd]=!S.fields[fd]; row.querySelector('.tog-sw').classList.toggle('on',S.fields[fd]); render(); });
+});
+[['sBarSize','vBarSize','barSize'],['sFontSize','vFontSize','fontSize'],['sQuality','vQuality','quality']].forEach(([sid,vid,key])=>{
+  document.getElementById(sid).addEventListener('input',function(){ S[key]=parseInt(this.value); document.getElementById(vid).textContent=this.value+'%'; render(); });
+});
+document.getElementById('exportBtn').addEventListener('click', doExport);
 </script>
 </body>
 </html>
